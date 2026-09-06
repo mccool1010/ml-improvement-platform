@@ -61,5 +61,5 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q --strict-markers"
 markers = [
-    "slow: tests that read the full dataset",
+    "slow: tests that read the full 682,428-row dataset; skipped when it is absent",
 ]

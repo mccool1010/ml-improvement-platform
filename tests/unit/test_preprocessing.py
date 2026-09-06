@@ -15,22 +15,40 @@ OBSERVATION_END = pd.Timestamp("2014-06-25")
 
 class TestTwoDigitDates:
     def test_recent_years_parse_in_the_twentieth_century(self) -> None:
-        parsed = pp.parse_two_digit_dates(pd.Series(["28-Feb-97"]), OBSERVATION_END)
+        parsed = pp.parse_two_digit_dates(pd.Series(["28-Feb-97"]))
         assert parsed.iloc[0] == pd.Timestamp("1997-02-28")
 
     def test_pre_1969_years_are_pulled_back_a_century(self) -> None:
         """``%y`` pivots at 1969, so 62 would otherwise parse as 2062."""
-        parsed = pp.parse_two_digit_dates(pd.Series(["07-Dec-61", "02-Jun-62"]), OBSERVATION_END)
+        parsed = pp.parse_two_digit_dates(pd.Series(["07-Dec-61", "02-Jun-62"]))
         assert parsed.iloc[0] == pd.Timestamp("1961-12-07")
         assert parsed.iloc[1] == pd.Timestamp("1962-06-02")
 
-    def test_no_parsed_date_exceeds_the_observation_cutoff(self) -> None:
+    def test_the_whole_ambiguous_range_is_corrected(self) -> None:
+        """strptime maps 60-68 to 2060-2068; every one of them belongs in the 1960s."""
+        values = pd.Series([f"01-Jan-{y:02d}" for y in range(60, 69)])
+        parsed = pp.parse_two_digit_dates(values)
+        assert parsed.dt.year.tolist() == list(range(1960, 1969))
+
+    def test_dates_after_the_last_approval_are_kept(self) -> None:
+        """The regression: charge-offs legitimately post-date the last approval.
+
+        An earlier version pivoted on the observation cutoff of 2014-06-25, which
+        rewrote 1,491 real charge-off dates in mid-2014 to 1914. The resulting
+        negative time-to-default satisfied the in-horizon test and flipped 1,096
+        labels to positive.
+        """
+        values = pd.Series(["26-Jun-14", "29-Aug-14", "31-Dec-14"])
+        parsed = pp.parse_two_digit_dates(values)
+        assert parsed.dt.year.tolist() == [2014, 2014, 2014]
+
+    def test_no_parsed_date_lands_in_the_twenty_first_century_tail(self) -> None:
         values = pd.Series(["07-Dec-61", "28-Feb-97", "25-Jun-14", "01-Jan-68"])
-        parsed = pp.parse_two_digit_dates(values, OBSERVATION_END)
-        assert (parsed <= OBSERVATION_END).all()
+        parsed = pp.parse_two_digit_dates(values)
+        assert (parsed.dt.year < 2059).all()
 
     def test_unparseable_values_become_null_rather_than_raising(self) -> None:
-        parsed = pp.parse_two_digit_dates(pd.Series(["not-a-date", None]), OBSERVATION_END)
+        parsed = pp.parse_two_digit_dates(pd.Series(["not-a-date", None]))
         assert parsed.isna().all()
 
 

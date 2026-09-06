@@ -150,7 +150,7 @@ asserted in `src/ml_platform/data/validation.py`.
 
 | Issue | Handling |
 |---|---|
-| Two-digit years spanning 1961 to 2014 | `strptime` pivots `%y` at 1969, so `07-Jan-62` parses as 2062. Any date after the observation cutoff is pulled back a century. |
+| Two-digit years spanning 1961 to 2014 | `strptime` pivots `%y` at 1969, so `07-Jan-62` parses as 2062. Any year after a fixed pivot of 2059 is pulled back a century. |
 | Currency as `"$60,000.00 "` | Stripped of symbols and whitespace, then coerced to float. |
 | `ApprovalFY` contains `1976A` | Four-digit year extracted by regex. |
 | `RevLineCr` and `LowDoc` hold stray codes beyond Y/N | Mapped to `{Y, N, UNK}`. `UNK` is a real level, not a dropped row. |
@@ -159,6 +159,31 @@ asserted in `src/ml_platform/data/validation.py`.
 | `DisbursementDate` missing for 0.26% | Filled with `ApprovalDate`. |
 | `Term` is 0 for 810 rows | Visible to the schema check, then removed by the uniform-exposure restriction. |
 | 1,997 rows have no `MIS_Status` | Excluded; they have no label at all. |
+
+## A labelling bug found at M3
+
+The century correction originally pivoted on the observation cutoff of
+2014-06-25, the last approval date in the register. That was wrong. Charge-offs
+follow the approvals they relate to, so a charge-off recorded in August 2014
+legitimately post-dates the last approval.
+
+The consequence was not a cosmetic date error. 1,491 real mid-2014 charge-off
+dates were rewritten to 1914, which made the time from disbursement to
+charge-off strongly negative. A negative interval satisfies "charged off within
+60 months", so **1,096 loans were labelled as in-horizon defaults when their
+charge-off actually fell outside the horizon.**
+
+The fix pivots on a fixed year, 2059, chosen because `strptime` maps two-digit
+years 60 to 68 into 2060 to 2068 while nothing in the file is legitimately later
+than the mid-2010s. The prepared schema now also asserts that every date column
+falls between 1960 and 2020, so this class of fault fails validation rather than
+producing a plausible-looking model.
+
+The effect on results was small and changed no conclusion. Usable rows fell from
+682,428 to 682,421, the test-split default rate from 6.94% to 6.83%, baseline
+test average precision from 0.1632 to 0.1629 and candidate from 0.7012 to 0.7036.
+The reference in `configs/reference.yaml` was re-locked, with the reason recorded
+in the file.
 
 ## Leakage
 

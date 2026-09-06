@@ -3,8 +3,15 @@
 Two things in this module carry most of the project's correctness risk:
 
 1. **Two-digit years.** Dates arrive as ``28-Feb-97``. ``strptime`` pivots ``%y``
-   at 1969-2068, so ``07-Jan-62`` parses as 2062. The register starts in 1961,
-   so any date landing after the observation horizon is pulled back a century.
+   at 1969-2068, so ``07-Jan-62`` parses as 2062 rather than 1962. Those dates
+   are pulled back a century.
+
+   The pivot for that correction must be a *fixed* year, not the observation
+   cutoff. An earlier version compared against the last approval date,
+   2014-06-25, which wrongly rewrote 1,491 charge-off dates from mid-2014 to
+   1914. Charge-offs are recorded after the approvals they follow, so they run
+   past the last approval legitimately. The resulting negative time-to-default
+   then satisfied the in-horizon test and flipped 1,096 labels to positive.
 
 2. **The label.** "Did this loan eventually charge off?" cannot be answered for
    recent loans, and filtering to loans that have *resolved* is biased: defaults
@@ -25,6 +32,14 @@ from ml_platform.determinism import ROW_SORT_KIND
 
 DAYS_PER_MONTH = 30.44
 
+#: Any parsed year above this is a two-digit-year artifact and is pulled back a
+#: century. ``strptime`` maps ``%y`` values 00-68 to 2000-2068, so the register's
+#: earliest years, 1960-1968, arrive as 2060-2068. Nothing in the file is
+#: legitimately later than the mid-2010s, so the pivot sits well clear of both:
+#: high enough that real 2014 charge-off dates survive, low enough that every
+#: mis-centuried value is caught.
+CENTURY_PIVOT_YEAR = 2059
+
 DATE_COLUMNS = ("ApprovalDate", "ChgOffDate", "DisbursementDate")
 CURRENCY_COLUMNS = ("DisbursementGross", "BalanceGross", "ChgOffPrinGr", "GrAppv", "SBA_Appv")
 
@@ -42,10 +57,15 @@ LEAKAGE_COLUMNS = (
 IDENTIFIER_COLUMNS = ("LoanNr_ChkDgt", "Name", "City", "Zip", "Bank")
 
 
-def parse_two_digit_dates(series: pd.Series, observation_end: pd.Timestamp) -> pd.Series:
-    """Parse ``%d-%b-%y`` dates, correcting the century for pre-1969 values."""
+def parse_two_digit_dates(series: pd.Series, pivot_year: int = CENTURY_PIVOT_YEAR) -> pd.Series:
+    """Parse ``%d-%b-%y`` dates, correcting the century for pre-1969 values.
+
+    ``pivot_year`` must be a fixed year, not the observation cutoff. Charge-offs
+    legitimately post-date the last approval in the file, so comparing against
+    the cutoff rewrites real 2014 dates to 1914.
+    """
     parsed = pd.to_datetime(series, format="%d-%b-%y", errors="coerce")
-    overshot = parsed.notna() & (parsed > observation_end)
+    overshot = parsed.notna() & (parsed.dt.year > pivot_year)
     return parsed.mask(overshot, parsed - pd.DateOffset(years=100))
 
 
@@ -68,11 +88,16 @@ def _normalise_flag(series: pd.Series) -> pd.Series:
 
 
 def clean_raw(frame: pd.DataFrame, observation_end: pd.Timestamp) -> pd.DataFrame:
-    """Type-correct the raw register and normalise its known-messy columns."""
+    """Type-correct the raw register and normalise its known-messy columns.
+
+    ``observation_end`` is retained for the labelling step; date parsing uses a
+    fixed century pivot instead, for the reason in the module docstring.
+    """
+    del observation_end  # parsing no longer depends on it
     df = frame.copy()
 
     for column in DATE_COLUMNS:
-        df[column] = parse_two_digit_dates(df[column], observation_end)
+        df[column] = parse_two_digit_dates(df[column])
     for column in CURRENCY_COLUMNS:
         df[column] = parse_currency(df[column])
 

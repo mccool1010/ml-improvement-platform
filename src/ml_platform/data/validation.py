@@ -26,6 +26,19 @@ import pandas as pd
 import pandera.pandas as pa
 from pandera.errors import SchemaErrors
 
+#: Plausible bounds for any date in the register. The file runs from 1961 to
+#: mid-2014, so anything outside this window is a parsing fault rather than data.
+#:
+#: These bounds are what actually catch the two-digit-year century bug. The
+#: schema coerces types, so a date column left as strings is silently converted
+#: and would otherwise pass; a mis-centuried "07-Dec-61" becomes 2061 and is
+#: caught here. Without the range check the schema could not detect the one
+#: parsing regression it exists to guard against.
+EARLIEST_PLAUSIBLE_DATE = pd.Timestamp("1960-01-01")
+LATEST_PLAUSIBLE_DATE = pd.Timestamp("2020-01-01")
+
+_plausible_date = pa.Check.in_range(EARLIEST_PLAUSIBLE_DATE, LATEST_PLAUSIBLE_DATE)
+
 RAW_COLUMNS: tuple[str, ...] = (
     "LoanNr_ChkDgt",
     "Name",
@@ -72,10 +85,12 @@ RAW_SCHEMA = pa.DataFrameSchema(
 
 PREPARED_SCHEMA = pa.DataFrameSchema(
     {
-        "ApprovalDate": pa.Column("datetime64[ns]", nullable=False),
-        "DisbursementDate": pa.Column("datetime64[ns]", nullable=False),
-        "horizon_end": pa.Column("datetime64[ns]", nullable=False),
-        "label_available_date": pa.Column("datetime64[ns]", nullable=False),
+        "ApprovalDate": pa.Column("datetime64[ns]", _plausible_date, nullable=False),
+        "DisbursementDate": pa.Column("datetime64[ns]", _plausible_date, nullable=False),
+        # horizon_end and label_available_date sit up to five years past
+        # disbursement, so they get the same upper bound rather than a tighter one.
+        "horizon_end": pa.Column("datetime64[ns]", _plausible_date, nullable=False),
+        "label_available_date": pa.Column("datetime64[ns]", _plausible_date, nullable=False),
         "target": pa.Column(pa.Int8, pa.Check.isin([0, 1]), nullable=False, coerce=True),
         "Term": pa.Column(pa.Float64, pa.Check.in_range(0, 600), nullable=True, coerce=True),
         "GrAppv": pa.Column(pa.Float64, pa.Check.gt(0), nullable=False, coerce=True),

@@ -1,23 +1,39 @@
-# Locked M1 reference results.
+# Locked reference results.
 #
-# These are the numbers a rerun must reproduce. They were produced by commit
-# 5f07ddc on the dataset whose SHA-256 is recorded below, and they are the
-# baseline against which every later milestone measures improvement.
+# These are the numbers a rerun must reproduce, on the dataset whose SHA-256 is
+# recorded below. They are the baseline against which every later milestone
+# measures improvement.
 #
 # Do not edit these values to make a failing check pass. If a legitimate change
-# moves them, that is a new reference: record why, and update the milestone note.
+# moves them, that is a new reference: record why, and update the note below.
+#
+# REVISION, M3, 2026-09-06. Re-locked after a labelling bug was fixed.
+#
+# The two-digit-year correction pivoted on the observation cutoff of 2014-06-25,
+# the last approval date in the register. Charge-offs legitimately post-date the
+# approvals they follow, so 1,491 real mid-2014 charge-off dates were rewritten
+# to 1914. The resulting negative time-to-default satisfied the in-horizon test
+# and flipped 1,096 labels to positive. The pivot is now a fixed year, 2059, and
+# the prepared schema asserts a plausibility range on every date column so the
+# same class of fault fails loudly.
+#
+# Effect on the headline numbers, all small, no conclusion changed:
+#   baseline  test AP 0.163209 -> 0.162915, ROC 0.725757 -> 0.729854
+#   candidate test AP 0.701151 -> 0.703605, ROC 0.959988 -> 0.960345
+# Usable rows fell from 682,428 to 682,421 and the test-split positive rate from
+# 6.94% to 6.83%.
 
 reference:
-  milestone: M1
+  milestone: M1 (re-locked at M3)
   recorded_at: "2026-09-06"
-  commit: 5f07ddc
+  commit: ce859b8
   dataset_sha256: 0359128a0b7599e83e4c2e4dcdd781d9121a765237f98d9f0ec1ab3e7c522548
   environment: production
-  observable_rows: 682428
+  observable_rows: 682421
   # Content and row order of the prepared dataset, hashed together. Compared
   # exactly. A mismatch here explains any metric drift in one line, because
   # gradient boosting consumes rows in order. See docs/reproducibility.md.
-  row_order_sha256: 8df8078e7d7e76cb
+  row_order_sha256: 7174370c6f491542
 
   # Tolerances are absolute differences on each metric.
   #
@@ -47,70 +63,70 @@ reference:
   # Splits must match exactly. A difference here is a data or configuration
   # problem, not floating-point noise, so no tolerance applies.
   splits:
-    train: { n_rows: 150160, n_positive: 4602 }
-    validation: { n_rows: 54285, n_positive: 2587 }
-    test: { n_rows: 53487, n_positive: 3712 }
-    production_stream: { n_rows: 121664, n_positive: 23266 }
+    train: { n_rows: 150158, n_positive: 4561 }
+    validation: { n_rows: 54284, n_positive: 2563 }
+    test: { n_rows: 53487, n_positive: 3651 }
+    production_stream: { n_rows: 121664, n_positive: 23002 }
 
   models:
     baseline:
       model_name: logistic_regression_baseline
       splits:
         train:
-          average_precision: 0.102508
-          roc_auc: 0.748984
-          brier_score: 0.028659
-          brier_skill_score: 0.035328
-          precision_at_capacity: 0.103756
-          recall_at_capacity: 0.338548
-          lift_at_capacity: 3.385485
-          calibration_ratio: 0.999418
+          average_precision: 0.102704
+          roc_auc: 0.750365
+          brier_score: 0.028408
+          brier_skill_score: 0.035447
+          precision_at_capacity: 0.103090
+          recall_at_capacity: 0.339399
+          lift_at_capacity: 3.393947
+          calibration_ratio: 1.000911
         validation:
-          average_precision: 0.129775
-          roc_auc: 0.750104
-          brier_score: 0.044069
-          brier_skill_score: 0.029001
-          precision_at_capacity: 0.155461
-          recall_at_capacity: 0.326247
-          lift_at_capacity: 3.262166
-          calibration_ratio: 0.647011
+          average_precision: 0.131498
+          roc_auc: 0.753873
+          brier_score: 0.043644
+          brier_skill_score: 0.029828
+          precision_at_capacity: 0.159698
+          recall_at_capacity: 0.338275
+          lift_at_capacity: 3.382381
+          calibration_ratio: 0.652258
         test:
-          average_precision: 0.163209
-          roc_auc: 0.725757
-          brier_score: 0.063913
-          brier_skill_score: 0.010391
-          precision_at_capacity: 0.208076
-          recall_at_capacity: 0.299838
-          lift_at_capacity: 2.998215
-          calibration_ratio: 0.461330
+          average_precision: 0.162915
+          roc_auc: 0.729854
+          brier_score: 0.062858
+          brier_skill_score: 0.011669
+          precision_at_capacity: 0.209572
+          recall_at_capacity: 0.307039
+          lift_at_capacity: 3.070219
+          calibration_ratio: 0.468480
 
     candidate:
       model_name: hist_gradient_boosting
       splits:
         train:
-          average_precision: 0.609127
-          roc_auc: 0.965401
-          brier_score: 0.018089
-          brier_skill_score: 0.391114
-          precision_at_capacity: 0.269028
-          recall_at_capacity: 0.877879
-          lift_at_capacity: 8.778207
-          calibration_ratio: 1.003521
+          average_precision: 0.604272
+          roc_auc: 0.965981
+          brier_score: 0.017998
+          brier_skill_score: 0.388894
+          precision_at_capacity: 0.267848
+          recall_at_capacity: 0.881824
+          lift_at_capacity: 8.818124
+          calibration_ratio: 0.998963
         validation:
-          average_precision: 0.727914
-          roc_auc: 0.971511
-          brier_score: 0.022694
-          brier_skill_score: 0.499970
-          precision_at_capacity: 0.410129
-          recall_at_capacity: 0.860843
-          lift_at_capacity: 8.606049
-          calibration_ratio: 0.795887
+          average_precision: 0.732031
+          roc_auc: 0.973004
+          brier_score: 0.022446
+          brier_skill_score: 0.501043
+          precision_at_capacity: 0.410020
+          recall_at_capacity: 0.868513
+          lift_at_capacity: 8.684175
+          calibration_ratio: 0.788303
         test:
-          average_precision: 0.701151
-          roc_auc: 0.959988
-          brier_score: 0.039396
-          brier_skill_score: 0.389997
-          precision_at_capacity: 0.535614
-          recall_at_capacity: 0.771821
-          lift_at_capacity: 7.717778
-          calibration_ratio: 0.555689
+          average_precision: 0.703605
+          roc_auc: 0.960345
+          brier_score: 0.038487
+          brier_skill_score: 0.394863
+          precision_at_capacity: 0.533745
+          recall_at_capacity: 0.781978
+          lift_at_capacity: 7.819337
+          calibration_ratio: 0.552815

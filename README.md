@@ -41,20 +41,20 @@ Time-ordered splits, no shuffling. Model development never touches 2006 onward.
 
 | Split | Approval window | Rows | Default rate |
 |---|---|---|---|
-| train | 2000 to 2003 | 150,160 | 3.06% |
-| validation | 2004 | 54,285 | 4.77% |
-| test | 2005 | 53,487 | 6.94% |
-| production stream | 2006 to mid-2009 | 121,664 | 19.12% |
+| train | 2000 to 2003 | 150,158 | 3.04% |
+| validation | 2004 | 54,284 | 4.72% |
+| test | 2005 | 53,487 | 6.83% |
+| production stream | 2006 to mid-2009 | 121,664 | 18.91% |
 
 Measured on the 2005 holdout:
 
 | Metric | Baseline | Candidate |
 |---|---|---|
-| Average precision | 0.1632 | 0.7012 |
-| ROC AUC | 0.7258 | 0.9600 |
-| Brier skill vs base rate | +0.010 | +0.390 |
-| Recall at 10% review capacity | 0.2998 | 0.7718 |
-| Lift at 10% review capacity | 3.00x | 7.72x |
+| Average precision | 0.1629 | 0.7036 |
+| ROC AUC | 0.7299 | 0.9603 |
+| Brier skill vs base rate | +0.012 | +0.395 |
+| Recall at 10% review capacity | 0.3070 | 0.7820 |
+| Lift at 10% review capacity | 3.07x | 7.82x |
 
 The baseline is logistic regression on core register fields. The candidate is
 histogram gradient boosting on engineered features, not yet tuned.
@@ -90,7 +90,7 @@ metric. A number without that provenance is not evidence.
 Development commands:
 
 ```bash
-pytest                      # 90 unit and regression tests
+pytest                      # 357 tests; add -m "not slow" to skip full-dataset runs
 ruff check src tests scripts
 ruff format src tests scripts
 mypy                        # strict mode
@@ -120,8 +120,8 @@ of it, not a second way to serve the same model.
 **Row order changes the model, so it is pinned and fingerprinted.** Approval dates
 tie thousands of times per day, and gradient boosting accumulates in row order.
 Changing only the sort algorithm was measured to move candidate average precision
-from 0.7012 to 0.7029. Every run hashes the prepared data's content and order, and
-the reproducibility check compares that hash exactly.
+by 0.0017. Every run hashes the prepared data's content and order, and the
+reproducibility check compares that hash exactly.
 
 ## Documentation
 
@@ -132,6 +132,7 @@ the reproducibility check compares that hash exactly.
 | [docs/data.md](docs/data.md) | Source, labelling, splits, drift, data quality, leakage |
 | [docs/model_lifecycle.md](docs/model_lifecycle.md) | The loop, and the three clocks |
 | [docs/reproducibility.md](docs/reproducibility.md) | What is pinned, the tolerances, and remaining nondeterminism |
+| [docs/testing.md](docs/testing.md) | The test tiers and the ML assumptions each one protects |
 | [ADR-001](docs/decisions/ADR-001-model-choice.md) | Dataset, label and model family |
 | [ADR-002](docs/decisions/ADR-002-serving.md) | Why KServe is the only serving path |
 | [ADR-003](docs/decisions/ADR-003-promotion-strategy.md) | Promotion gates, drift, rollback |
@@ -143,7 +144,7 @@ the reproducibility check compares that hash exactly.
 | M0 architecture and problem selection | Complete |
 | M1 ML baseline | Complete |
 | M2 reproducible training | Complete, 48 of 48 metrics reproduce bit-exactly |
-| M3 automated testing | Unit and regression tests in place, remaining tiers planned |
+| M3 automated testing | Complete, 357 tests across unit, integration and regression |
 | M4 to M16 | Planned |
 
 Built milestone by milestone, each verified by running it.
