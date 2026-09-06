@@ -23,6 +23,7 @@ data/processed/*
 # working tree was fine and a fresh clone could not import ml_platform.models.
 /mlruns/
 /mlartifacts/
+/mlflow.db
 /models/
 *.joblib
 *.pkl

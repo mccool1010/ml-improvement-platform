@@ -87,6 +87,31 @@ revision, config fingerprint, dataset checksum, row-order fingerprint, lockfile
 checksum, library versions, seed, thread pinning, split composition and every
 metric. A number without that provenance is not evidence.
 
+## Experiment tracking (MLflow)
+
+Every training run is recorded in MLflow. Tracking is on by default and writes to
+a local SQLite store; both the database and the artifact directory resolve from
+the project root, so the location does not depend on where you run the command.
+
+```bash
+uv run python -m ml_platform train --model baseline
+uv run python -m ml_platform train --model candidate
+
+# Browse the runs at http://127.0.0.1:5000
+uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts
+```
+
+Each run records the model and its hyperparameters, the labelling rules and split
+boundaries, every metric already in the JSON run record, and provenance tags for
+the commit, config fingerprint, dataset checksum and row-order fingerprint. The
+run record and the fitted pipeline are attached as artifacts.
+
+MLflow **records** runs; it does not decide anything. The JSON records under
+`artifacts/reports/` and the locked `configs/reference.yaml` stay authoritative,
+and `ml_platform reproduce` never reads MLflow. Tracking failures are logged and
+swallowed, so a recorder can never fail a training run. Set `tracking.enabled` to
+`false` in `configs/base.yaml` to turn it off.
+
 Development commands:
 
 ```bash

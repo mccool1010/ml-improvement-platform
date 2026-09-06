@@ -17,6 +17,22 @@ determinism:
   # any change in sorting behaviour fails loudly instead of drifting the metrics.
   row_sort_kind: quicksort
 
+tracking:
+  # MLflow records the run; it does not decide anything. The JSON run record in
+  # artifacts/reports and configs/reference.yaml remain authoritative, and the
+  # reproducibility check never reads MLflow.
+  enabled: true
+  experiment_name: sba-loan-default
+  # MLflow 3 put the plain-file backend into maintenance mode and refuses it, so
+  # runs go to a local SQLite database. Relative paths here resolve against the
+  # project root, never the working directory. An absolute URI or a remote
+  # http:// server passes through unchanged, so a tracking server can be
+  # introduced later without a code change.
+  backend_uri: sqlite:///mlflow.db
+  artifact_dir: mlartifacts
+  # Log the fitted pipeline as a run artifact. Registration is M6, not M4.
+  log_model: true
+
 data:
   source:
     name: sba-national-7a

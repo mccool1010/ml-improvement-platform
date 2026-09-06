@@ -105,6 +105,45 @@ class Config:
         return int(self.raw["determinism"]["n_threads"])
 
     @property
+    def _tracking(self) -> dict[str, Any]:
+        """Tracking settings, or an empty mapping when the block is absent."""
+        return dict(self.raw.get("tracking") or {})
+
+    @property
+    def tracking_enabled(self) -> bool:
+        """Whether to record this run in MLflow. Absent configuration means no."""
+        return bool(self._tracking.get("enabled", False))
+
+    @property
+    def experiment_name(self) -> str:
+        return str(self._tracking.get("experiment_name", "default"))
+
+    @property
+    def log_model(self) -> bool:
+        return bool(self._tracking.get("log_model", False))
+
+    @property
+    def tracking_uri(self) -> str:
+        """MLflow backend store, with any relative path anchored to the project.
+
+        A ``sqlite:///`` URI carrying a relative path is rewritten to an absolute
+        one, so the store does not move with the working directory. Anything
+        else, including a remote server, passes through untouched.
+        """
+        raw = str(self._tracking.get("backend_uri", "sqlite:///mlflow.db"))
+        prefix = "sqlite:///"
+        if raw.startswith(prefix):
+            target = raw[len(prefix) :]
+            if not Path(target).is_absolute():
+                return prefix + resolve(target).as_posix()
+        return raw
+
+    @property
+    def artifact_uri(self) -> str:
+        """Where MLflow stores run artifacts, as a file URI under the project."""
+        return resolve(str(self._tracking.get("artifact_dir", "mlartifacts"))).as_uri()
+
+    @property
     def observation_end(self) -> date:
         return _as_date(self.raw["data"]["observation_end"])
 

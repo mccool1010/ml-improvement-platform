@@ -19,7 +19,7 @@ from typing import Any
 
 import pandas as pd
 
-from ml_platform import determinism
+from ml_platform import determinism, tracking
 from ml_platform.config import Config, load_config
 from ml_platform.data import ingestion, preprocessing, validation
 from ml_platform.data.splitting import Split, make_splits, subsample
@@ -49,6 +49,7 @@ class RunRecord:
     validation_reports: list[str]
     dataset: dict[str, Any]
     model_path: str | None = None
+    mlflow_run_id: str | None = None
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -63,6 +64,7 @@ class RunRecord:
             "metrics": self.metrics,
             "validation_reports": self.validation_reports,
             "model_path": self.model_path,
+            "mlflow_run_id": self.mlflow_run_id,
             "notes": self.notes,
         }
 
@@ -220,6 +222,18 @@ def run_training(
         },
         model_path=model_path,
     )
+
+    # Recorded in MLflow before the JSON is written, so the archived record
+    # carries the MLflow run id. Tracking cannot fail the run: on any error the
+    # id stays None and the JSON record below is written regardless.
+    tracking.log_run_record(
+        record,
+        trained.pipeline,
+        cfg,
+        model_key=model_key,
+        hyperparameters=dict(spec.get("params") or {}),
+    )
+
     saved = record.save(cfg.report_dir)
     LOGGER.info("wrote run record to %s", saved)
     return record

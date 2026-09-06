@@ -216,6 +216,10 @@ class TestFullReproduction:
                 **base.raw,
                 "artifacts": {**base.raw["artifacts"], "benchmark_dir": str(tmp_path)},
                 "evaluation": {**base.raw["evaluation"], "report_dir": str(tmp_path)},
+                # Reproduction is verified from the JSON records, never MLflow.
+                # Leaving tracking on would also write two runs into the
+                # project's store every time the suite runs.
+                "tracking": {**base.raw.get("tracking", {}), "enabled": False},
             },
             environment="production",
         )
