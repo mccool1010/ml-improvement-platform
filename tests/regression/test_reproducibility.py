@@ -201,12 +201,25 @@ class TestFullReproduction:
     """The real thing, on the genuine dataset."""
 
     def test_the_locked_m1_reference_is_reproduced_exactly(
-        self, real_dataset_available: bool
+        self, real_dataset_available: bool, tmp_path: Any
     ) -> None:
         if not real_dataset_available:
             pytest.skip("real dataset not downloaded; run: python -m ml_platform download")
 
-        result = rp.reproduce(environment="production", profile="strict", save_models=False)
+        # Redirect the run record and benchmark output so repeated test runs do
+        # not accumulate artifacts in the repository.
+        from ml_platform.config import Config, load_config
+
+        base = load_config("production")
+        redirected = Config(
+            raw={
+                **base.raw,
+                "artifacts": {**base.raw["artifacts"], "benchmark_dir": str(tmp_path)},
+                "evaluation": {**base.raw["evaluation"], "report_dir": str(tmp_path)},
+            },
+            environment="production",
+        )
+        result = rp.reproduce(profile="strict", save_models=False, config=redirected)
 
         assert result.split_mismatches == []
         assert result.deviations == [], [d.describe() for d in result.deviations]

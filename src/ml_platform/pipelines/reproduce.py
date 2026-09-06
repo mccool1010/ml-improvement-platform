@@ -20,7 +20,7 @@ from typing import Any
 
 import yaml
 
-from ml_platform.config import CONFIG_DIR, load_config
+from ml_platform.config import CONFIG_DIR, Config, load_config
 from ml_platform.paths import ensure_dir
 from ml_platform.pipelines.train_pipeline import RunRecord, run_training
 
@@ -190,16 +190,25 @@ def reproduce(
     profile: str = "strict",
     save_models: bool = False,
     config_dir: Path | None = None,
+    config: Config | None = None,
 ) -> ComparisonResult:
-    """Train both models and compare them against the locked reference."""
+    """Train both models and compare them against the locked reference.
+
+    ``config`` overrides the environment lookup. Both models are trained from the
+    same resolved configuration, so a comparison can never straddle two of them,
+    and a caller such as a test can redirect the output directories.
+    """
     reference = load_reference(config_dir)
-    cfg = load_config(environment)
+    cfg = config or load_config(environment)
 
     records: dict[str, RunRecord] = {}
     for model_key in ("baseline", "candidate"):
         LOGGER.info("training %s", model_key)
         records[model_key] = run_training(
-            environment=environment, model_key=model_key, save_model=save_models
+            environment=environment,
+            model_key=model_key,
+            save_model=save_models,
+            config=cfg,
         )
 
     deviations: list[Deviation] = []
