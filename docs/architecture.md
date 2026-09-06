@@ -12,6 +12,14 @@ within 60 months of disbursement. The engineering is the point.
 ## Component map
 
 ```
+  ┌──────────────────────────────────────────────┐
+  │ ml_platform.cli        one entry point       │
+  │   download validate train reproduce          │
+  │ ml_platform.paths      root-anchored paths   │
+  │ ml_platform.determinism seeds, threads, sort │
+  │ ml_platform.config     layered + fingerprint │
+  └──────┬───────────────────────────────────────┘
+         v
   ┌─────────────┐
   │ SBA register│  checksum-verified download
   └──────┬──────┘
@@ -35,6 +43,8 @@ within 60 months of disbursement. The engineering is the point.
                         │ ml_platform.pipelines      │
                         │   train_pipeline           │
                         │   -> JSON run record       │
+                        │   reproduce                │
+                        │   -> vs configs/reference  │
                         └───────┬────────────────────┘
                                 v
                         ┌────────────────────────────┐
@@ -81,9 +91,18 @@ make different decisions. See `docs/model_lifecycle.md`.
 an environment overlay, hashed into every run record.
 
 **Every run is self-describing.** The run record carries the git revision and
-whether the tree was dirty, the config fingerprint, the data checksum, library
-versions, the seed, split composition and all metrics. A number without those is
-not evidence.
+whether the tree was dirty, the config fingerprint, the dataset checksum, the
+row-order fingerprint, the lockfile checksum, library versions, the seed, the
+determinism settings, split composition and all metrics. A number without those
+is not evidence.
+
+**Results are locked and checked, not asserted.** `configs/reference.yaml` holds
+the M1 metrics, split composition and row-order fingerprint. `python -m
+ml_platform reproduce` retrains and compares against them, exiting non-zero on any
+deviation. See `docs/reproducibility.md`.
+
+**Nothing depends on the working directory.** Every path resolves from the project
+root, and no absolute path is written into a run record.
 
 **Validation precedes training.** A schema failure stops the pipeline before a
 model is fitted, so a data problem cannot become a quietly degraded model.
@@ -114,6 +133,7 @@ A component that cannot be tied to a requirement here does not get added.
 
 ## Current state
 
-M0 and M1 are complete. The data layer, feature layer, baseline model, evaluation
-metrics and run-record provenance all run against the real dataset. Everything from
-M2 onward is planned but not built.
+M0, M1 and M2 are complete. The data layer, feature layer, baseline model,
+evaluation metrics, run-record provenance and the reproducibility check all run
+against the real dataset, with 48 of 48 metrics reproducing bit-exactly from a
+fresh checkout. Everything from M3 onward is planned but not built.
