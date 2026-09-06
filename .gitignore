@@ -16,19 +16,23 @@ data/processed/*
 !data/**/.gitkeep
 !data/README.md
 
-# ML lifecycle artifacts
-mlruns/
-mlartifacts/
-models/
+# ML lifecycle artifacts.
+# These patterns are anchored with a leading slash so they match only at the
+# repository root. An unanchored `models/` also matched src/ml_platform/models/,
+# which silently excluded the entire modelling package from version control. The
+# working tree was fine and a fresh clone could not import ml_platform.models.
+/mlruns/
+/mlartifacts/
+/models/
 *.joblib
 *.pkl
-optuna.db
+/optuna.db
 
 # Run records and benchmarks ARE the project's evidence, so they are tracked.
 # Model binaries are not: they are large and rebuildable from a tracked record.
 
 # Local env / editor
-.env
+/.env
 .env.*
 !.env.example
 .idea/
