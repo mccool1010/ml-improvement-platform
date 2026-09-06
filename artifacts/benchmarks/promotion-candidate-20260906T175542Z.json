@@ -1,0 +1,143 @@
+{
+  "decision": {
+    "report": {
+      "promote": false,
+      "decision_split": "validation",
+      "candidate": "hist_gradient_boosting",
+      "production": "sba-loan-default-classifier",
+      "production_source": "registry",
+      "n_gates": 7,
+      "n_passed": 5,
+      "blocking_failures": [
+        "min_improvement",
+        "reproducibility"
+      ],
+      "gates": [
+        {
+          "name": "min_improvement",
+          "passed": false,
+          "required": true,
+          "observed": 0.0,
+          "threshold": 0.01,
+          "comparison": "average_precision delta >= 0.010000",
+          "reason": "average_precision improved by only 0.000000, below the required 0.010000"
+        },
+        {
+          "name": "minimum_metric",
+          "passed": true,
+          "required": true,
+          "observed": 0.732031,
+          "threshold": 0.25,
+          "comparison": "average_precision >= 0.250000",
+          "reason": ""
+        },
+        {
+          "name": "roc_auc_regression",
+          "passed": true,
+          "required": true,
+          "observed": 0.973004,
+          "threshold": 0.973004,
+          "comparison": "roc_auc >= production - 0.005000",
+          "reason": ""
+        },
+        {
+          "name": "calibration",
+          "passed": true,
+          "required": true,
+          "observed": 0.022446,
+          "threshold": 0.022446,
+          "comparison": "brier <= production + 0.000000 and skill > 0.000000",
+          "reason": ""
+        },
+        {
+          "name": "recall_regression",
+          "passed": true,
+          "required": true,
+          "observed": 0.868513,
+          "threshold": 0.868513,
+          "comparison": "recall_at_capacity >= production - 0.000000",
+          "reason": ""
+        },
+        {
+          "name": "latency",
+          "passed": true,
+          "required": true,
+          "observed": 0.043398,
+          "threshold": 1.0,
+          "comparison": "mean prediction <= 1.0000 ms",
+          "reason": ""
+        },
+        {
+          "name": "reproducibility",
+          "passed": false,
+          "required": true,
+          "observed": null,
+          "threshold": null,
+          "comparison": "clean revision, and a recorded lockfile",
+          "reason": "the working tree had uncommitted changes"
+        }
+      ]
+    },
+    "registered": false,
+    "registered_model": null,
+    "version": null,
+    "source_run_id": "dfad324e335f48c699f86eddf0efc2d4",
+    "notes": [
+      "rejected: min_improvement (average_precision improved by only 0.000000, below the required 0.010000); reproducibility (the working tree had uncommitted changes)"
+    ]
+  },
+  "comparison": {
+    "decision_split": "validation",
+    "candidate": {
+      "run_id": "candidate-20260906T175542Z",
+      "mlflow_run_id": "dfad324e335f48c699f86eddf0efc2d4",
+      "model_name": "hist_gradient_boosting",
+      "metrics": {
+        "split": "validation",
+        "n_rows": 54284,
+        "n_positive": 2563,
+        "positive_rate": 0.047215,
+        "average_precision": 0.732031,
+        "roc_auc": 0.973004,
+        "brier_score": 0.022446,
+        "brier_skill_score": 0.501043,
+        "review_capacity": 0.1,
+        "precision_at_capacity": 0.41002,
+        "recall_at_capacity": 0.868513,
+        "lift_at_capacity": 8.684175,
+        "threshold_at_capacity": 0.065487,
+        "mean_predicted_probability": 0.037219,
+        "calibration_ratio": 0.788303,
+        "inference_seconds": 2.3558,
+        "extra": {},
+        "lift_over_base_rate": 15.504204
+      }
+    },
+    "production": {
+      "source": "registry",
+      "described": "sba-loan-default-classifier v1 (registry alias)",
+      "name": "sba-loan-default-classifier",
+      "version": "1",
+      "mlflow_run_id": "eb35c645f82b446cb49d218d442fe5dc",
+      "platform_run_id": "candidate-20260906T175308Z",
+      "metrics": {
+        "n_rows": 54284.0,
+        "n_positive": 2563.0,
+        "positive_rate": 0.047215,
+        "average_precision": 0.732031,
+        "roc_auc": 0.973004,
+        "brier_score": 0.022446,
+        "brier_skill_score": 0.501043,
+        "review_capacity": 0.1,
+        "precision_at_capacity": 0.41002,
+        "recall_at_capacity": 0.868513,
+        "lift_at_capacity": 8.684175,
+        "threshold_at_capacity": 0.065487,
+        "mean_predicted_probability": 0.037219,
+        "calibration_ratio": 0.788303,
+        "inference_seconds": 0.8898,
+        "lift_over_base_rate": 15.504204
+      }
+    }
+  }
+}
