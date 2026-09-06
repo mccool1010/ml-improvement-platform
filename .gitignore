@@ -30,6 +30,12 @@ data/processed/*
 /optuna.db
 
 # Run records and benchmarks ARE the project's evidence, so they are tracked.
+#
+# Promotion reports are the exception. `promote` writes one per invocation, which
+# left the working tree dirty and made the *next* run fail the reproducibility
+# gate. The gate is correct and stays as it is; the churn is what gets ignored.
+# Reports already committed as M6 evidence remain tracked.
+/artifacts/benchmarks/promotion-*.json
 # Model binaries are not: they are large and rebuildable from a tracked record.
 
 # Local env / editor
