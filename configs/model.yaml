@@ -1,0 +1,27 @@
+# Model definitions. The baseline is deliberately simple: it is the benchmark a
+# candidate must beat, not an attempt at the best possible model.
+baseline:
+  name: logistic_regression_baseline
+  estimator: sklearn.linear_model.LogisticRegression
+  params:
+    max_iter: 2000
+    # No class weighting. Balanced weights left ranking unchanged but inflated
+    # predicted probabilities to a mean of 0.46 against a true rate of 0.19,
+    # scoring worse than a constant base-rate predictor on Brier.
+    class_weight: null
+    C: 1.0
+    solver: lbfgs
+    random_state: 42
+  feature_set: core
+
+candidate:
+  name: hist_gradient_boosting
+  estimator: sklearn.ensemble.HistGradientBoostingClassifier
+  params:
+    learning_rate: 0.1
+    max_iter: 300
+    max_leaf_nodes: 31
+    min_samples_leaf: 50
+    l2_regularization: 0.0
+    random_state: 42
+  feature_set: engineered

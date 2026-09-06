@@ -1,0 +1,4 @@
+# Full-data runs used for recorded, citable results.
+environment: production
+sample_fraction: 1.0
+log_level: INFO

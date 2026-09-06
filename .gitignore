@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Data: raw and derived data are reproducible from scripts/download_data.py
+data/raw/*
+data/interim/*
+data/processed/*
+!data/**/.gitkeep
+!data/README.md
+
+# ML lifecycle artifacts
+mlruns/
+mlartifacts/
+models/
+*.joblib
+*.pkl
+optuna.db
+
+# Run records and benchmarks ARE the project's evidence, so they are tracked.
+# Model binaries are not: they are large and rebuildable from a tracked record.
+
+# Local env / editor
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+.DS_Store

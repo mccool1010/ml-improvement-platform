@@ -1,0 +1,60 @@
+# Base configuration. Environment files (development/production) override these keys.
+project_name: ml-improvement-platform
+seed: 42
+
+data:
+  source:
+    name: sba-national-7a
+    description: >-
+      U.S. Small Business Administration 7(a)/504 national loan guarantee register,
+      approvals from 1962 to 2014-06. Mirror of the dataset published with
+      Li, Mickel & Taylor (2018), Journal of Statistics Education 26(1).
+    url: https://huggingface.co/datasets/MaddRaf/SBAnational/resolve/main/SBAnational.csv
+    filename: SBAnational.csv
+    sha256: 0359128a0b7599e83e4c2e4dcdd781d9121a765237f98d9f0ec1ab3e7c522548
+    expected_rows: 899164
+  raw_dir: data/raw
+  interim_dir: data/interim
+  processed_dir: data/processed
+  # Last approval date present in the register. Acts as "today" for the whole
+  # project: nothing after this instant may be treated as observed.
+  observation_end: "2014-06-25"
+
+label:
+  # A loan is positive if it charged off within `horizon_months` of disbursement.
+  # A row is only usable once its full horizon has elapsed before observation_end.
+  # The inclusion rule does not depend on the outcome, so the label is unbiased.
+  name: default_within_60m
+  horizon_months: 60
+  target_column: target
+
+population:
+  # Uniform exposure. Every loan must be scheduled to remain outstanding for the
+  # whole horizon, so none matures early and all are at risk for the same 60
+  # months. Without this, "charged off within 60 months" is partly a question of
+  # whether the loan even lasted that long: measured on the unrestricted data the
+  # default rate cliffs from 41% for 3-5 year loans to 8% for 5-7 year loans,
+  # exactly at the horizon boundary, and Term alone then reproduces 96% of model
+  # performance. Restricting costs 19.4% of rows and removes the artifact.
+  min_term_months: 60
+
+split:
+  strategy: time_ordered
+  date_column: ApprovalDate
+  # Strictly ordered, non-overlapping, no shuffling. Training starts in 2000
+  # because UrbanRural is effectively unpopulated before then (see docs/data.md).
+  train:             { start: "2000-01-01", end: "2003-12-31" }
+  validation:        { start: "2004-01-01", end: "2004-12-31" }
+  test:              { start: "2005-01-01", end: "2005-12-31" }
+  # Held back entirely from model development. Replayed as live traffic to
+  # exercise drift detection, delayed-label evaluation and retraining.
+  production_stream: { start: "2006-01-01", end: "2009-06-30" }
+
+evaluation:
+  primary_metric: average_precision
+  secondary_metrics: [roc_auc, brier_score, brier_skill_score, recall_at_capacity]
+  # Operating point: the share of applications a review team can examine.
+  # A fixed precision target is not usable here because the base rate moves from
+  # 6.8% to 33.8% across the study period. See docs/decisions/ADR-003.
+  review_capacity: 0.10
+  report_dir: artifacts/reports

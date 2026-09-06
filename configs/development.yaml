@@ -1,0 +1,4 @@
+# Local development. Subsamples training data for fast iteration.
+environment: development
+sample_fraction: 0.25
+log_level: DEBUG
