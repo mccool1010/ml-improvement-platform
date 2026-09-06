@@ -86,6 +86,58 @@ artifacts:
   model_dir: models
   benchmark_dir: artifacts/benchmarks
 
+promotion:
+  # Promotion is decided on the validation split. The test split is held-out
+  # evidence; a threshold chosen against it, or a promotion justified by it,
+  # turns it into a training signal and it stops being evidence for anything.
+  decision_split: validation
+
+  registered_model_name: sba-loan-default-classifier
+  production_alias: production
+  # How production is identified when nothing is registered yet. Never "the
+  # newest run": that would let any accident become the incumbent.
+  bootstrap_model: baseline
+
+  gates:
+    # Below this the difference is not distinguishable from run-to-run noise.
+    min_improvement:
+      metric: average_precision
+      min_delta: 0.01
+      required: true
+    # An absolute floor, so a candidate cannot win merely by beating a poor
+    # incumbent. Validation base rate is 0.0472 and the baseline reaches 0.1315,
+    # so this demands roughly five times base rate and clear daylight over it.
+    minimum_metric:
+      metric: average_precision
+      minimum: 0.25
+      required: true
+    # Guards against trading general ranking for a narrow gain.
+    roc_auc_regression:
+      metric: roc_auc
+      max_decline: 0.005
+      required: true
+    # Probabilities must stay honest, not just the ordering. Under drift a model
+    # can hold its ranking while its probabilities go badly wrong.
+    calibration:
+      max_decline: 0.0
+      min_skill: 0.0
+      required: true
+    # The operating point the model actually informs.
+    recall_regression:
+      metric: recall_at_capacity
+      max_decline: 0.0
+      required: true
+    # Derived from the evaluation pass, so this is batch throughput rather than
+    # single-request latency. A true p99 needs the serving path, which is M7.
+    # It still catches a candidate that is orders of magnitude slower.
+    latency:
+      max_mean_prediction_ms: 1.0
+      required: true
+    # An unreproducible result is not evidence, whatever it scores.
+    reproducibility:
+      require_clean_revision: true
+      required: true
+
 evaluation:
   primary_metric: average_precision
   secondary_metrics: [roc_auc, brier_score, brier_skill_score, recall_at_capacity]

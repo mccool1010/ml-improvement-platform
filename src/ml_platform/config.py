@@ -143,6 +143,33 @@ class Config:
         """Where MLflow stores run artifacts, as a file URI under the project."""
         return resolve(str(self._tracking.get("artifact_dir", "mlartifacts"))).as_uri()
 
+    # --- promotion (M6) ---------------------------------------------------
+    @property
+    def _promotion(self) -> dict[str, Any]:
+        return dict(self.raw.get("promotion") or {})
+
+    @property
+    def decision_split(self) -> str:
+        """Split a promotion is decided on. Never the held-out test split."""
+        return str(self._promotion.get("decision_split", "validation"))
+
+    @property
+    def registered_model_name(self) -> str:
+        return str(self._promotion.get("registered_model_name", "model"))
+
+    @property
+    def production_alias(self) -> str:
+        return str(self._promotion.get("production_alias", "production"))
+
+    @property
+    def bootstrap_model(self) -> str:
+        """Stand-in incumbent when nothing is registered yet."""
+        return str(self._promotion.get("bootstrap_model", "baseline"))
+
+    @property
+    def gate_config(self) -> dict[str, Any]:
+        return dict(self._promotion.get("gates") or {})
+
     # --- optimisation (M5) -----------------------------------------------
     @property
     def _optimization(self) -> dict[str, Any]:

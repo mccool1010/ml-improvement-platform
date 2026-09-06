@@ -162,6 +162,40 @@ def command_optimize(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_promote(args: argparse.Namespace) -> int:
+    """Evaluate a candidate against production and register it if it passes."""
+    _bootstrap(args.environment)
+    from ml_platform.pipelines.promote_pipeline import run_promotion
+
+    decision, comparison = run_promotion(
+        environment=args.environment,
+        model_key=args.model,
+        register=not args.no_register,
+        nrows=args.nrows,
+    )
+    report = decision.report
+
+    print()
+    print(f"production      {comparison.production.describe()}")
+    print(f"candidate       {comparison.candidate.model_name} ({comparison.candidate.context.run_id})")
+    print(f"decided on      {report.decision_split} split")
+    print()
+    for gate in report.gates:
+        print(f"  {gate.describe()}")
+        if gate.reason:
+            print(f"        reason: {gate.reason}")
+    print()
+    print(report.summary())
+    if decision.registered:
+        print(f"registered      {decision.registered_model} v{decision.version}")
+        print(f"traceable to    mlflow run {decision.source_run_id}")
+    elif report.promote:
+        print("gates passed but the model was not registered")
+    else:
+        print("NOT registered; production is unchanged")
+    return 0 if report.promote else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m ml_platform",
@@ -198,6 +232,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--nrows", type=int, default=None, help="read only N raw rows (smoke test)"
     )
     optimize.set_defaults(handler=command_optimize)
+
+    promote = subparsers.add_parser(
+        "promote", help="evaluate a candidate against production and register it if it passes"
+    )
+    promote.add_argument("--model", default="candidate", choices=["baseline", "candidate"])
+    promote.add_argument("--no-register", action="store_true", help="evaluate gates only")
+    promote.add_argument("--nrows", type=int, default=None, help="read only N raw rows")
+    promote.set_defaults(handler=command_promote)
 
     repro = subparsers.add_parser(
         "reproduce", help="verify the run against locked reference metrics"
