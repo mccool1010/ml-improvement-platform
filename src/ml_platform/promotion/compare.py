@@ -92,7 +92,7 @@ def _metrics_from_registry(
 
         mlflow.set_tracking_uri(config.tracking_uri)
         run = mlflow.MlflowClient().get_run(production.run_id)
-    except Exception:  # noqa: BLE001
+    except Exception:
         LOGGER.warning("could not read the production run %s", production.run_id, exc_info=True)
         return None
 

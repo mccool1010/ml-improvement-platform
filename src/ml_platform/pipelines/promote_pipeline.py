@@ -82,8 +82,7 @@ def run_promotion(
             decision.notes.append("gates passed but registration did not complete")
     elif not decision.report.promote:
         decision.notes.append(
-            "rejected: "
-            + "; ".join(f"{g.name} ({g.reason})" for g in decision.report.failures)
+            "rejected: " + "; ".join(f"{g.name} ({g.reason})" for g in decision.report.failures)
         )
         LOGGER.warning("candidate rejected; production is unchanged")
 
@@ -91,9 +90,7 @@ def run_promotion(
         "decision": decision.to_dict(),
         "comparison": comparison.to_dict(),
     }
-    destination = (
-        ensure_dir(cfg.benchmark_dir) / f"promotion-{record.context.run_id}.json"
-    )
+    destination = ensure_dir(cfg.benchmark_dir) / f"promotion-{record.context.run_id}.json"
     destination.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     LOGGER.info("wrote promotion report to %s", destination)
     return decision, comparison

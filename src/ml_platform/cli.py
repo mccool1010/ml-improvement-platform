@@ -177,7 +177,9 @@ def command_promote(args: argparse.Namespace) -> int:
 
     print()
     print(f"production      {comparison.production.describe()}")
-    print(f"candidate       {comparison.candidate.model_name} ({comparison.candidate.context.run_id})")
+    print(
+        f"candidate       {comparison.candidate.model_name} ({comparison.candidate.context.run_id})"
+    )
     print(f"decided on      {report.decision_split} split")
     print()
     for gate in report.gates:

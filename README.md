@@ -149,6 +149,44 @@ enough to deploy is M6, not this milestone.
 MLflow layout: one parent run per study, one nested run per trial, with the best
 parameters and `study.json` on the parent.
 
+## Quality gates and the model registry
+
+```bash
+uv run python -m ml_platform promote                    # evaluate and register if it passes
+uv run python -m ml_platform promote --no-register      # gates only, dry run
+```
+
+Exit code is 0 when the candidate is promoted and 1 when it is rejected, so this
+can gate a pipeline.
+
+**Decisions use the validation split.** The test split is held-out evidence; the
+gate evaluator raises if asked to decide on it.
+
+**Production is identified explicitly**, never by recency. It is the model
+carrying the `production` alias on the registered model
+`sba-loan-default-classifier`. If nothing is registered yet, the comparison falls
+back to the configured `bootstrap_model`, trained fresh. There is no third path,
+so an accidental run can never become the incumbent.
+
+Seven configurable gates, all in `configs/base.yaml`:
+
+| Gate | Default | Why |
+|---|---|---|
+| `min_improvement` | AP delta >= 0.01 | Below this the difference is not distinguishable from noise |
+| `minimum_metric` | AP >= 0.25 | An absolute floor, so beating a poor incumbent is not enough |
+| `roc_auc_regression` | within 0.005 | Stops trading general ranking for a narrow gain |
+| `calibration` | Brier no worse, skill > 0 | Probabilities must stay honest, not just the ordering |
+| `recall_regression` | no decline | The operating point the model actually informs |
+| `latency` | mean <= 1.0 ms/prediction | Batch throughput from the evaluation pass, not a single-request p99 |
+| `reproducibility` | clean revision + lockfile | An unreproducible result is not evidence |
+
+A candidate that fails any mandatory gate is **not registered**. It keeps its
+MLflow run and logged model artifact, but gets no registered version and the
+production alias does not move. `register_candidate` refuses a failed report
+outright, so a wiring mistake cannot route a rejected model into the registry.
+
+The gate report, not MLflow, decides. MLflow records the outcome.
+
 Development commands:
 
 ```bash

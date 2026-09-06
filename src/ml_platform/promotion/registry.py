@@ -60,7 +60,7 @@ def resolve_production(config: Config) -> ProductionModel | None:
         version = client.get_model_version_by_alias(
             config.registered_model_name, config.production_alias
         )
-    except Exception:  # noqa: BLE001 - an absent alias is the normal first case
+    except Exception:
         LOGGER.info(
             "no %r alias on registered model %r; production will be bootstrapped",
             config.production_alias,
@@ -124,7 +124,7 @@ def register_candidate(
         )
         return config.registered_model_name, str(version.version)
 
-    except Exception:  # noqa: BLE001 - registration must not lose the decision
+    except Exception:
         LOGGER.warning("model registration failed; the gate report stands", exc_info=True)
         return None, None
 

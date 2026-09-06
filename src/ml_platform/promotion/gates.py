@@ -349,7 +349,9 @@ def evaluate_gates(
 
     if "min_improvement" in gate_config:
         results.append(
-            gate_min_improvement(candidate_metrics, production_metrics, gate_config["min_improvement"])
+            gate_min_improvement(
+                candidate_metrics, production_metrics, gate_config["min_improvement"]
+            )
         )
     if "minimum_metric" in gate_config:
         results.append(gate_minimum_metric(candidate_metrics, gate_config["minimum_metric"]))
