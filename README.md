@@ -64,23 +64,33 @@ histogram gradient boosting on engineered features, not yet tuned.
 Requires Python 3.12 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv venv --python 3.12
-uv pip install -e ".[dev]"
+uv sync --frozen --extra dev              # exact dependency set from uv.lock
 
-python scripts/download_data.py     # fetch and checksum-verify the register
-python scripts/validate_data.py     # run both schemas, report split composition
-python scripts/train.py --model baseline
-python scripts/train.py --model candidate
+uv run python -m ml_platform download     # fetch and checksum-verify the register
+uv run python -m ml_platform validate     # run both schemas, report split composition
+uv run python -m ml_platform train --model baseline
+uv run python -m ml_platform train --model candidate
 ```
 
+To verify the whole thing reproduces the locked results:
+
+```bash
+uv run python -m ml_platform reproduce
+```
+
+That retrains both models and compares all 48 metrics against
+`configs/reference.yaml`, exiting non-zero if anything moves. On the reference
+platform every metric is bit-exact. See [docs/reproducibility.md](docs/reproducibility.md).
+
 Each training run writes a JSON record to `artifacts/reports/` carrying the git
-revision, config fingerprint, data checksum, library versions, seed, split
-composition and every metric. A number without that provenance is not evidence.
+revision, config fingerprint, dataset checksum, row-order fingerprint, lockfile
+checksum, library versions, seed, thread pinning, split composition and every
+metric. A number without that provenance is not evidence.
 
 Development commands:
 
 ```bash
-pytest                      # unit tests
+pytest                      # 90 unit and regression tests
 ruff check src tests scripts
 ruff format src tests scripts
 mypy                        # strict mode
@@ -107,6 +117,12 @@ does not arrive in time.
 **KServe is the canonical serving path.** FastAPI is the application layer in front
 of it, not a second way to serve the same model.
 
+**Row order changes the model, so it is pinned and fingerprinted.** Approval dates
+tie thousands of times per day, and gradient boosting accumulates in row order.
+Changing only the sort algorithm was measured to move candidate average precision
+from 0.7012 to 0.7029. Every run hashes the prepared data's content and order, and
+the reproducibility check compares that hash exactly.
+
 ## Documentation
 
 | Document | Contents |
@@ -115,6 +131,7 @@ of it, not a second way to serve the same model.
 | [docs/architecture.md](docs/architecture.md) | Component map and what each technology is for |
 | [docs/data.md](docs/data.md) | Source, labelling, splits, drift, data quality, leakage |
 | [docs/model_lifecycle.md](docs/model_lifecycle.md) | The loop, and the three clocks |
+| [docs/reproducibility.md](docs/reproducibility.md) | What is pinned, the tolerances, and remaining nondeterminism |
 | [ADR-001](docs/decisions/ADR-001-model-choice.md) | Dataset, label and model family |
 | [ADR-002](docs/decisions/ADR-002-serving.md) | Why KServe is the only serving path |
 | [ADR-003](docs/decisions/ADR-003-promotion-strategy.md) | Promotion gates, drift, rollback |
@@ -125,8 +142,8 @@ of it, not a second way to serve the same model.
 |---|---|
 | M0 architecture and problem selection | Complete |
 | M1 ML baseline | Complete |
-| M2 reproducible training | Partly done, provenance and config layering in place |
-| M3 automated testing | Unit tests for the data and evaluation layers |
+| M2 reproducible training | Complete, 48 of 48 metrics reproduce bit-exactly |
+| M3 automated testing | Unit and regression tests in place, remaining tiers planned |
 | M4 to M16 | Planned |
 
 Built milestone by milestone, each verified by running it.

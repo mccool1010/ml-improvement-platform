@@ -1,7 +1,7 @@
 # Convenience targets. Every command also appears in the README, because `make`
 # is not guaranteed to be installed on Windows development machines.
 
-.PHONY: help install data validate baseline candidate test lint format typecheck check clean
+.PHONY: help install data validate baseline candidate reproduce test lint format typecheck check verify clean
 
 help:
 	@echo "install    create the venv and install dependencies"
@@ -9,6 +9,7 @@ help:
 	@echo "validate   run schema validation and report split composition"
 	@echo "baseline   train the baseline model"
 	@echo "candidate  train the candidate model"
+	@echo "reproduce  retrain both and verify against the locked M1 reference"
 	@echo "test       run the test suite"
 	@echo "check      lint, format check, typecheck and test"
 
@@ -17,16 +18,19 @@ install:
 	uv pip install -e ".[dev]"
 
 data:
-	python scripts/download_data.py
+	python -m ml_platform download
 
 validate:
-	python scripts/validate_data.py
+	python -m ml_platform validate
 
 baseline:
-	python scripts/train.py --model baseline
+	python -m ml_platform train --model baseline
 
 candidate:
-	python scripts/train.py --model candidate
+	python -m ml_platform train --model candidate
+
+reproduce:
+	python -m ml_platform reproduce --profile strict
 
 test:
 	pytest
@@ -42,6 +46,9 @@ typecheck:
 
 check: lint typecheck test
 	ruff format --check src tests scripts
+
+# Full gate: static checks, tests, and a verified reproduction of the M1 metrics.
+verify: check reproduce
 
 clean:
 	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage

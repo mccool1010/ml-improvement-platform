@@ -21,6 +21,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from ml_platform.determinism import ROW_SORT_KIND
+
 DAYS_PER_MONTH = 30.44
 
 DATE_COLUMNS = ("ApprovalDate", "ChgOffDate", "DisbursementDate")
@@ -176,7 +178,11 @@ def prepare(
     if min_term_months is not None:
         observed = restrict_to_uniform_exposure(observed, min_term_months)
 
-    return observed.sort_values("ApprovalDate").reset_index(drop=True)
+    # Row order matters: gradient boosting bins and accumulates in row order, and
+    # approval dates tie thousands of times per day. The sort kind is pinned in
+    # ml_platform.determinism and the resulting order is fingerprinted into every
+    # run record, so a change in ordering fails loudly rather than drifting.
+    return observed.sort_values("ApprovalDate", kind=ROW_SORT_KIND).reset_index(drop=True)
 
 
 def drop_leakage(frame: pd.DataFrame) -> pd.DataFrame:

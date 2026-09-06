@@ -1,0 +1,153 @@
+{
+  "context": {
+    "run_id": "baseline-20260906T082706Z",
+    "started_at": "2026-09-06T08:27:06.046696+00:00",
+    "git_revision": "1af005729a8f69cd84bacf94c59dc664ec0e0c26",
+    "git_dirty": true,
+    "config_fingerprint": "285b80f377ffb758",
+    "environment": "production",
+    "seed": 42,
+    "data_sha256": "0359128a0b7599e83e4c2e4dcdd781d9121a765237f98d9f0ec1ab3e7c522548",
+    "lockfile_sha256": "99d1406020c6079d",
+    "determinism": {
+      "seed": 42,
+      "n_threads": 1,
+      "sort_kind": "stable",
+      "python_hash_seed": "42",
+      "thread_env": {
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1"
+      }
+    },
+    "interpreter": "CPython 3.12.14",
+    "platform": "Windows AMD64",
+    "libraries": {
+      "pandas": "3.0.5",
+      "numpy": "2.5.2",
+      "sklearn": "1.9.0",
+      "scipy": "1.18.1",
+      "pandera": "0.33.1",
+      "joblib": "1.6.0"
+    },
+    "command": "__main__.py"
+  },
+  "model_name": "logistic_regression_baseline",
+  "feature_set": "core",
+  "n_features": 70,
+  "train_seconds": 1.162,
+  "dataset": {
+    "name": "sba-national-7a",
+    "sha256": "0359128a0b7599e83e4c2e4dcdd781d9121a765237f98d9f0ec1ab3e7c522548",
+    "observation_end": "2014-06-25",
+    "label": "default_within_60m",
+    "horizon_months": 60,
+    "min_term_months": 60,
+    "observable_rows": 682428
+  },
+  "splits": [
+    {
+      "name": "train",
+      "start": "2000-01-01",
+      "end": "2003-12-31",
+      "n_rows": 150160,
+      "n_positive": 4602,
+      "positive_rate": 0.030647
+    },
+    {
+      "name": "validation",
+      "start": "2004-01-01",
+      "end": "2004-12-31",
+      "n_rows": 54285,
+      "n_positive": 2587,
+      "positive_rate": 0.047656
+    },
+    {
+      "name": "test",
+      "start": "2005-01-01",
+      "end": "2005-12-31",
+      "n_rows": 53487,
+      "n_positive": 3712,
+      "positive_rate": 0.0694
+    },
+    {
+      "name": "production_stream",
+      "start": "2006-01-01",
+      "end": "2009-06-30",
+      "n_rows": 121664,
+      "n_positive": 23266,
+      "positive_rate": 0.191232
+    }
+  ],
+  "metrics": {
+    "train": {
+      "split": "train",
+      "n_rows": 150160,
+      "n_positive": 4602,
+      "positive_rate": 0.030647,
+      "average_precision": 0.102508,
+      "roc_auc": 0.748984,
+      "brier_score": 0.028659,
+      "brier_skill_score": 0.035328,
+      "review_capacity": 0.1,
+      "precision_at_capacity": 0.103756,
+      "recall_at_capacity": 0.338548,
+      "lift_at_capacity": 3.385485,
+      "threshold_at_capacity": 0.065024,
+      "mean_predicted_probability": 0.030629,
+      "calibration_ratio": 0.999418,
+      "inference_seconds": 0.2666,
+      "extra": {},
+      "lift_over_base_rate": 3.344797
+    },
+    "validation": {
+      "split": "validation",
+      "n_rows": 54285,
+      "n_positive": 2587,
+      "positive_rate": 0.047656,
+      "average_precision": 0.129775,
+      "roc_auc": 0.750104,
+      "brier_score": 0.044069,
+      "brier_skill_score": 0.029001,
+      "review_capacity": 0.1,
+      "precision_at_capacity": 0.155461,
+      "recall_at_capacity": 0.326247,
+      "lift_at_capacity": 3.262166,
+      "threshold_at_capacity": 0.062204,
+      "mean_predicted_probability": 0.030834,
+      "calibration_ratio": 0.647011,
+      "inference_seconds": 0.0926,
+      "extra": {},
+      "lift_over_base_rate": 2.723162
+    },
+    "test": {
+      "split": "test",
+      "n_rows": 53487,
+      "n_positive": 3712,
+      "positive_rate": 0.0694,
+      "average_precision": 0.163209,
+      "roc_auc": 0.725757,
+      "brier_score": 0.063913,
+      "brier_skill_score": 0.010391,
+      "review_capacity": 0.1,
+      "precision_at_capacity": 0.208076,
+      "recall_at_capacity": 0.299838,
+      "lift_at_capacity": 2.998215,
+      "threshold_at_capacity": 0.064399,
+      "mean_predicted_probability": 0.032016,
+      "calibration_ratio": 0.46133,
+      "inference_seconds": 0.0901,
+      "extra": {},
+      "lift_over_base_rate": 2.351715
+    }
+  },
+  "validation_reports": [
+    "raw schema checked",
+    "prepared schema enforced",
+    "label horizon elapsed for every retained row"
+  ],
+  "model_path": null,
+  "notes": []
+}

@@ -1,0 +1,116 @@
+# Locked M1 reference results.
+#
+# These are the numbers a rerun must reproduce. They were produced by commit
+# 5f07ddc on the dataset whose SHA-256 is recorded below, and they are the
+# baseline against which every later milestone measures improvement.
+#
+# Do not edit these values to make a failing check pass. If a legitimate change
+# moves them, that is a new reference: record why, and update the milestone note.
+
+reference:
+  milestone: M1
+  recorded_at: "2026-09-06"
+  commit: 5f07ddc
+  dataset_sha256: 0359128a0b7599e83e4c2e4dcdd781d9121a765237f98d9f0ec1ab3e7c522548
+  environment: production
+  observable_rows: 682428
+  # Content and row order of the prepared dataset, hashed together. Compared
+  # exactly. A mismatch here explains any metric drift in one line, because
+  # gradient boosting consumes rows in order. See docs/reproducibility.md.
+  row_order_sha256: 8df8078e7d7e76cb
+
+  # Tolerances are absolute differences on each metric.
+  #
+  # Observed behaviour on the reference platform is bit-exact: training was
+  # verified to produce byte-identical predictions across separate processes and
+  # across 1, 4 and 8 native threads. The tolerance is therefore not absorbing
+  # expected local noise; it exists for two narrower reasons.
+  #
+  #   1. Run records round metrics to six decimal places, so a comparison must
+  #      permit half a unit in the last place.
+  #   2. A different platform may use a different BLAS build, whose reduction
+  #      order can move the last bits of a floating-point sum.
+  #
+  # `strict` is what a same-platform rerun must meet. `portable` is the looser
+  # bound for a rerun on different hardware or a different operating system.
+  tolerances:
+    strict:
+      default: 0.000001
+    portable:
+      default: 0.0005
+      # Threshold-derived metrics move in steps as ranks swap around the cut, so
+      # they are permitted slightly more room than the smooth ranking metrics.
+      precision_at_capacity: 0.002
+      recall_at_capacity: 0.002
+      lift_at_capacity: 0.02
+
+  # Splits must match exactly. A difference here is a data or configuration
+  # problem, not floating-point noise, so no tolerance applies.
+  splits:
+    train: { n_rows: 150160, n_positive: 4602 }
+    validation: { n_rows: 54285, n_positive: 2587 }
+    test: { n_rows: 53487, n_positive: 3712 }
+    production_stream: { n_rows: 121664, n_positive: 23266 }
+
+  models:
+    baseline:
+      model_name: logistic_regression_baseline
+      splits:
+        train:
+          average_precision: 0.102508
+          roc_auc: 0.748984
+          brier_score: 0.028659
+          brier_skill_score: 0.035328
+          precision_at_capacity: 0.103756
+          recall_at_capacity: 0.338548
+          lift_at_capacity: 3.385485
+          calibration_ratio: 0.999418
+        validation:
+          average_precision: 0.129775
+          roc_auc: 0.750104
+          brier_score: 0.044069
+          brier_skill_score: 0.029001
+          precision_at_capacity: 0.155461
+          recall_at_capacity: 0.326247
+          lift_at_capacity: 3.262166
+          calibration_ratio: 0.647011
+        test:
+          average_precision: 0.163209
+          roc_auc: 0.725757
+          brier_score: 0.063913
+          brier_skill_score: 0.010391
+          precision_at_capacity: 0.208076
+          recall_at_capacity: 0.299838
+          lift_at_capacity: 2.998215
+          calibration_ratio: 0.461330
+
+    candidate:
+      model_name: hist_gradient_boosting
+      splits:
+        train:
+          average_precision: 0.609127
+          roc_auc: 0.965401
+          brier_score: 0.018089
+          brier_skill_score: 0.391114
+          precision_at_capacity: 0.269028
+          recall_at_capacity: 0.877879
+          lift_at_capacity: 8.778207
+          calibration_ratio: 1.003521
+        validation:
+          average_precision: 0.727914
+          roc_auc: 0.971511
+          brier_score: 0.022694
+          brier_skill_score: 0.499970
+          precision_at_capacity: 0.410129
+          recall_at_capacity: 0.860843
+          lift_at_capacity: 8.606049
+          calibration_ratio: 0.795887
+        test:
+          average_precision: 0.701151
+          roc_auc: 0.959988
+          brier_score: 0.039396
+          brier_skill_score: 0.389997
+          precision_at_capacity: 0.535614
+          recall_at_capacity: 0.771821
+          lift_at_capacity: 7.717778
+          calibration_ratio: 0.555689

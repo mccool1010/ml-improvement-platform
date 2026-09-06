@@ -1,0 +1,258 @@
+{
+  "profile": "strict",
+  "passed": false,
+  "metrics_compared": 48,
+  "exact_matches": 24,
+  "deviations": [
+    {
+      "model": "candidate",
+      "split": "train",
+      "metric": "average_precision",
+      "expected": 0.609127,
+      "observed": 0.617132,
+      "difference": 0.00800500000000004,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "train",
+      "metric": "roc_auc",
+      "expected": 0.965401,
+      "observed": 0.967437,
+      "difference": 0.0020360000000000378,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "train",
+      "metric": "brier_score",
+      "expected": 0.018089,
+      "observed": 0.017916,
+      "difference": 0.00017299999999999954,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "train",
+      "metric": "brier_skill_score",
+      "expected": 0.391114,
+      "observed": 0.396947,
+      "difference": 0.005832999999999977,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "train",
+      "metric": "precision_at_capacity",
+      "expected": 0.269028,
+      "observed": 0.27211,
+      "difference": 0.003082000000000029,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "train",
+      "metric": "recall_at_capacity",
+      "expected": 0.877879,
+      "observed": 0.887875,
+      "difference": 0.009996000000000005,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "train",
+      "metric": "lift_at_capacity",
+      "expected": 8.778207,
+      "observed": 8.878748,
+      "difference": 0.10054099999999977,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "train",
+      "metric": "calibration_ratio",
+      "expected": 1.003521,
+      "observed": 1.00168,
+      "difference": 0.0018410000000002036,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "validation",
+      "metric": "average_precision",
+      "expected": 0.727914,
+      "observed": 0.730998,
+      "difference": 0.0030840000000000867,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "validation",
+      "metric": "roc_auc",
+      "expected": 0.971511,
+      "observed": 0.972205,
+      "difference": 0.0006939999999999724,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "validation",
+      "metric": "brier_score",
+      "expected": 0.022694,
+      "observed": 0.022576,
+      "difference": 0.00011800000000000005,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "validation",
+      "metric": "brier_skill_score",
+      "expected": 0.49997,
+      "observed": 0.502565,
+      "difference": 0.002595000000000014,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "validation",
+      "metric": "precision_at_capacity",
+      "expected": 0.410129,
+      "observed": 0.410573,
+      "difference": 0.00044399999999999995,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "validation",
+      "metric": "recall_at_capacity",
+      "expected": 0.860843,
+      "observed": 0.861616,
+      "difference": 0.0007730000000000237,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "validation",
+      "metric": "lift_at_capacity",
+      "expected": 8.606049,
+      "observed": 8.615364,
+      "difference": 0.009314999999999074,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "validation",
+      "metric": "calibration_ratio",
+      "expected": 0.795887,
+      "observed": 0.798116,
+      "difference": 0.0022290000000000365,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "test",
+      "metric": "average_precision",
+      "expected": 0.701151,
+      "observed": 0.702866,
+      "difference": 0.001715000000000022,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "test",
+      "metric": "roc_auc",
+      "expected": 0.959988,
+      "observed": 0.960518,
+      "difference": 0.0005300000000000304,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "test",
+      "metric": "brier_score",
+      "expected": 0.039396,
+      "observed": 0.039427,
+      "difference": 3.099999999999631e-05,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "test",
+      "metric": "brier_skill_score",
+      "expected": 0.389997,
+      "observed": 0.389526,
+      "difference": 0.0004709999999999992,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "test",
+      "metric": "precision_at_capacity",
+      "expected": 0.535614,
+      "observed": 0.538605,
+      "difference": 0.002990999999999966,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "test",
+      "metric": "recall_at_capacity",
+      "expected": 0.771821,
+      "observed": 0.776131,
+      "difference": 0.004310000000000036,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "test",
+      "metric": "lift_at_capacity",
+      "expected": 7.717778,
+      "observed": 7.760879,
+      "difference": 0.043101000000000056,
+      "tolerance": 1e-06
+    },
+    {
+      "model": "candidate",
+      "split": "test",
+      "metric": "calibration_ratio",
+      "expected": 0.555689,
+      "observed": 0.552045,
+      "difference": 0.0036439999999999806,
+      "tolerance": 1e-06
+    }
+  ],
+  "split_mismatches": [],
+  "provenance": {
+    "git_revision": "1af005729a8f69cd84bacf94c59dc664ec0e0c26",
+    "git_dirty": true,
+    "config_fingerprint": "285b80f377ffb758",
+    "dataset_sha256": "0359128a0b7599e83e4c2e4dcdd781d9121a765237f98d9f0ec1ab3e7c522548",
+    "lockfile_sha256": "99d1406020c6079d",
+    "interpreter": "CPython 3.12.14",
+    "platform": "Windows AMD64",
+    "libraries": {
+      "pandas": "3.0.5",
+      "numpy": "2.5.2",
+      "sklearn": "1.9.0",
+      "scipy": "1.18.1",
+      "pandera": "0.33.1",
+      "joblib": "1.6.0"
+    },
+    "determinism": {
+      "seed": 42,
+      "n_threads": 1,
+      "sort_kind": "stable",
+      "python_hash_seed": "42",
+      "thread_env": {
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1"
+      }
+    },
+    "reproducible_from_provenance": false,
+    "reference_milestone": "M1",
+    "reference_commit": "5f07ddc"
+  }
+}

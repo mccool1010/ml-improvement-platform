@@ -2,6 +2,21 @@
 project_name: ml-improvement-platform
 seed: 42
 
+determinism:
+  # Native thread pools are pinned so parallel floating-point reductions always
+  # sum in the same order. Gradient boosting is the sensitive component: its
+  # histogram accumulation is parallelised over samples, so the thread count
+  # changes the last bits of every split gain. Training here takes seconds, so
+  # single-threaded costs nothing worth having.
+  n_threads: 1
+  # Row order is not cosmetic. Approval dates tie thousands of times per day, and
+  # gradient boosting bins and accumulates in row order, so the tie order changes
+  # the model. Switching this from quicksort to stable was measured to move
+  # candidate average precision from 0.701151 to 0.702866. The order produced is
+  # fingerprinted into every run record and locked in configs/reference.yaml, so
+  # any change in sorting behaviour fails loudly instead of drifting the metrics.
+  row_sort_kind: quicksort
+
 data:
   source:
     name: sba-national-7a
@@ -49,6 +64,11 @@ split:
   # Held back entirely from model development. Replayed as live traffic to
   # exercise drift detection, delayed-label evaluation and retraining.
   production_stream: { start: "2006-01-01", end: "2009-06-30" }
+
+artifacts:
+  # Resolved against the project root, never the working directory.
+  model_dir: models
+  benchmark_dir: artifacts/benchmarks
 
 evaluation:
   primary_metric: average_precision

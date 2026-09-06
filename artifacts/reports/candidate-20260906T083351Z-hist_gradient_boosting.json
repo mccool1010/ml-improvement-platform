@@ -1,0 +1,154 @@
+{
+  "context": {
+    "run_id": "candidate-20260906T083351Z",
+    "started_at": "2026-09-06T08:33:51.176133+00:00",
+    "git_revision": "1af005729a8f69cd84bacf94c59dc664ec0e0c26",
+    "git_dirty": true,
+    "config_fingerprint": "ce4320a14a7991ce",
+    "environment": "production",
+    "seed": 42,
+    "data_sha256": "0359128a0b7599e83e4c2e4dcdd781d9121a765237f98d9f0ec1ab3e7c522548",
+    "lockfile_sha256": "99d1406020c6079d",
+    "determinism": {
+      "seed": 42,
+      "n_threads": 1,
+      "sort_kind": "quicksort",
+      "python_hash_seed": "42",
+      "thread_env": {
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1"
+      }
+    },
+    "interpreter": "CPython 3.12.14",
+    "platform": "Windows AMD64",
+    "libraries": {
+      "pandas": "3.0.5",
+      "numpy": "2.5.2",
+      "sklearn": "1.9.0",
+      "scipy": "1.18.1",
+      "pandera": "0.33.1",
+      "joblib": "1.6.0"
+    },
+    "command": "__main__.py"
+  },
+  "model_name": "hist_gradient_boosting",
+  "feature_set": "engineered",
+  "n_features": 119,
+  "train_seconds": 10.257,
+  "dataset": {
+    "name": "sba-national-7a",
+    "sha256": "0359128a0b7599e83e4c2e4dcdd781d9121a765237f98d9f0ec1ab3e7c522548",
+    "observation_end": "2014-06-25",
+    "label": "default_within_60m",
+    "horizon_months": 60,
+    "min_term_months": 60,
+    "observable_rows": 682428,
+    "row_order_sha256": "8df8078e7d7e76cb"
+  },
+  "splits": [
+    {
+      "name": "train",
+      "start": "2000-01-01",
+      "end": "2003-12-31",
+      "n_rows": 150160,
+      "n_positive": 4602,
+      "positive_rate": 0.030647
+    },
+    {
+      "name": "validation",
+      "start": "2004-01-01",
+      "end": "2004-12-31",
+      "n_rows": 54285,
+      "n_positive": 2587,
+      "positive_rate": 0.047656
+    },
+    {
+      "name": "test",
+      "start": "2005-01-01",
+      "end": "2005-12-31",
+      "n_rows": 53487,
+      "n_positive": 3712,
+      "positive_rate": 0.0694
+    },
+    {
+      "name": "production_stream",
+      "start": "2006-01-01",
+      "end": "2009-06-30",
+      "n_rows": 121664,
+      "n_positive": 23266,
+      "positive_rate": 0.191232
+    }
+  ],
+  "metrics": {
+    "train": {
+      "split": "train",
+      "n_rows": 150160,
+      "n_positive": 4602,
+      "positive_rate": 0.030647,
+      "average_precision": 0.609127,
+      "roc_auc": 0.965401,
+      "brier_score": 0.018089,
+      "brier_skill_score": 0.391114,
+      "review_capacity": 0.1,
+      "precision_at_capacity": 0.269028,
+      "recall_at_capacity": 0.877879,
+      "lift_at_capacity": 8.778207,
+      "threshold_at_capacity": 0.070589,
+      "mean_predicted_probability": 0.030755,
+      "calibration_ratio": 1.003521,
+      "inference_seconds": 2.5818,
+      "extra": {},
+      "lift_over_base_rate": 19.875583
+    },
+    "validation": {
+      "split": "validation",
+      "n_rows": 54285,
+      "n_positive": 2587,
+      "positive_rate": 0.047656,
+      "average_precision": 0.727914,
+      "roc_auc": 0.971511,
+      "brier_score": 0.022694,
+      "brier_skill_score": 0.49997,
+      "review_capacity": 0.1,
+      "precision_at_capacity": 0.410129,
+      "recall_at_capacity": 0.860843,
+      "lift_at_capacity": 8.606049,
+      "threshold_at_capacity": 0.06725,
+      "mean_predicted_probability": 0.037929,
+      "calibration_ratio": 0.795887,
+      "inference_seconds": 0.8993,
+      "extra": {},
+      "lift_over_base_rate": 15.274341
+    },
+    "test": {
+      "split": "test",
+      "n_rows": 53487,
+      "n_positive": 3712,
+      "positive_rate": 0.0694,
+      "average_precision": 0.701151,
+      "roc_auc": 0.959988,
+      "brier_score": 0.039396,
+      "brier_skill_score": 0.389997,
+      "review_capacity": 0.1,
+      "precision_at_capacity": 0.535614,
+      "recall_at_capacity": 0.771821,
+      "lift_at_capacity": 7.717778,
+      "threshold_at_capacity": 0.076511,
+      "mean_predicted_probability": 0.038565,
+      "calibration_ratio": 0.555689,
+      "inference_seconds": 0.8411,
+      "extra": {},
+      "lift_over_base_rate": 10.10304
+    }
+  },
+  "validation_reports": [
+    "raw schema checked",
+    "prepared schema enforced",
+    "label horizon elapsed for every retained row"
+  ],
+  "model_path": null,
+  "notes": []
+}

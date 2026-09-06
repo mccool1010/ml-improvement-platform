@@ -17,8 +17,9 @@ from typing import Any
 
 import yaml
 
-CONFIG_DIR = Path(__file__).resolve().parents[2] / "configs"
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from ml_platform.paths import project_root, resolve
+
+CONFIG_DIR = project_root() / "configs"
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -76,19 +77,32 @@ class Config:
 
     @property
     def raw_path(self) -> Path:
-        return Path(PROJECT_ROOT, str(self.raw["data"]["raw_dir"]), str(self.source["filename"]))
+        return resolve(str(self.raw["data"]["raw_dir"]), str(self.source["filename"]))
 
     @property
     def processed_dir(self) -> Path:
-        return Path(PROJECT_ROOT, str(self.raw["data"]["processed_dir"]))
+        return resolve(str(self.raw["data"]["processed_dir"]))
 
     @property
     def interim_dir(self) -> Path:
-        return Path(PROJECT_ROOT, str(self.raw["data"]["interim_dir"]))
+        return resolve(str(self.raw["data"]["interim_dir"]))
 
     @property
     def report_dir(self) -> Path:
-        return Path(PROJECT_ROOT, str(self.raw["evaluation"]["report_dir"]))
+        return resolve(str(self.raw["evaluation"]["report_dir"]))
+
+    @property
+    def model_dir(self) -> Path:
+        return resolve(str(self.raw["artifacts"]["model_dir"]))
+
+    @property
+    def benchmark_dir(self) -> Path:
+        return resolve(str(self.raw["artifacts"]["benchmark_dir"]))
+
+    @property
+    def n_threads(self) -> int:
+        """Native thread-pool size. Pinned so parallel reductions stay ordered."""
+        return int(self.raw["determinism"]["n_threads"])
 
     @property
     def observation_end(self) -> date:
@@ -132,11 +146,15 @@ class Config:
         return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
+#: Configuration files merged in order. Later files override earlier ones.
+CONFIG_LAYERS: tuple[str, ...] = ("base.yaml", "model.yaml")
+
+
 def load_config(environment: str = "development", config_dir: Path | None = None) -> Config:
     """Load ``base.yaml`` merged with ``model.yaml`` and the environment overlay."""
     directory = config_dir or CONFIG_DIR
     merged: dict[str, Any] = {}
-    for name in ("base.yaml", "model.yaml", f"{environment}.yaml"):
+    for name in (*CONFIG_LAYERS, f"{environment}.yaml"):
         path = directory / name
         if not path.exists():
             raise FileNotFoundError(f"missing configuration file: {path}")

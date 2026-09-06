@@ -19,16 +19,16 @@ from typing import Any
 
 import pandas as pd
 
+from ml_platform import determinism
 from ml_platform.config import Config, load_config
 from ml_platform.data import ingestion, preprocessing, validation
 from ml_platform.data.splitting import Split, make_splits, subsample
 from ml_platform.models.evaluate import EvaluationResult, evaluate_model, lift_over_base_rate
 from ml_platform.models.train import TrainedModel, features_and_target, train
-from ml_platform.reproducibility import RunContext, new_run_context, set_global_seed
+from ml_platform.paths import ensure_dir, relative_to_root
+from ml_platform.reproducibility import RunContext, new_run_context
 
 LOGGER = logging.getLogger(__name__)
-
-MODEL_DIR = Path("models")
 
 #: Splits the model may be measured on during development. The production stream
 #: is deliberately absent: it is reserved for the monitoring and drift work.
@@ -113,6 +113,7 @@ def load_prepared_dataset(config: Config, *, nrows: int | None = None) -> tuple[
         100 * len(prepared) / max(len(raw), 1),
         prepared[config.target_column].mean(),
     )
+    LOGGER.info("row-order fingerprint %s", determinism.row_order_fingerprint(prepared))
     return prepared, checksum
 
 
@@ -126,7 +127,17 @@ def run_training(
 ) -> RunRecord:
     """Train one model end to end and return its run record."""
     cfg = config or load_config(environment)
-    set_global_seed(cfg.seed)
+
+    # Seeds and thread pinning are applied here so that calling this function
+    # directly, not only through the CLI, still produces a reproducible run.
+    settings = determinism.configure(cfg.seed, cfg.n_threads)
+    unpinned = determinism.verify_thread_pinning(cfg.n_threads)
+    if unpinned:
+        LOGGER.warning(
+            "thread pinning did not take effect for %s; native libraries were "
+            "imported before pinning, so bit-exact reproduction is not guaranteed",
+            ", ".join(unpinned),
+        )
 
     prepared, checksum = load_prepared_dataset(cfg, nrows=nrows)
     splits = make_splits(prepared, cfg)
@@ -168,13 +179,16 @@ def run_training(
         environment=cfg.environment,
         seed=cfg.seed,
         data_sha256=checksum,
+        determinism=settings,
         prefix=model_key,
     )
 
     model_path: str | None = None
     if save_model:
-        destination = MODEL_DIR / f"{context.run_id}-{trained.name}.joblib"
-        model_path = str(trained.save(destination))
+        destination = ensure_dir(cfg.model_dir) / f"{context.run_id}-{trained.name}.joblib"
+        trained.save(destination)
+        # Recorded relative to the project root so records compare across machines.
+        model_path = relative_to_root(destination)
         LOGGER.info("saved model to %s", model_path)
 
     n_features = len(trained.pipeline.named_steps["preprocess"].get_feature_names_out())
@@ -187,14 +201,22 @@ def run_training(
         train_seconds=trained.train_seconds,
         splits=[splits[name].describe(cfg.target_column) for name in cfg.split_names],
         metrics=metrics,
-        validation_reports=["raw schema checked", "prepared schema enforced"],
+        validation_reports=[
+            "raw schema checked",
+            "prepared schema enforced",
+            "label horizon elapsed for every retained row",
+        ],
         dataset={
             "name": cfg.source["name"],
             "sha256": checksum,
             "observation_end": str(cfg.observation_end),
             "label": cfg.raw["label"]["name"],
             "horizon_months": cfg.horizon_months,
+            "min_term_months": cfg.min_term_months,
             "observable_rows": len(prepared),
+            # Content and row order together. Two runs agreeing here consumed
+            # identical data in identical order.
+            "row_order_sha256": determinism.row_order_fingerprint(prepared),
         },
         model_path=model_path,
     )

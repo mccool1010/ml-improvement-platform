@@ -1,0 +1,42 @@
+{
+  "profile": "strict",
+  "passed": true,
+  "metrics_compared": 48,
+  "exact_matches": 48,
+  "deviations": [],
+  "split_mismatches": [],
+  "provenance": {
+    "git_revision": "1af005729a8f69cd84bacf94c59dc664ec0e0c26",
+    "git_dirty": true,
+    "config_fingerprint": "ce4320a14a7991ce",
+    "dataset_sha256": "0359128a0b7599e83e4c2e4dcdd781d9121a765237f98d9f0ec1ab3e7c522548",
+    "lockfile_sha256": "99d1406020c6079d",
+    "interpreter": "CPython 3.12.14",
+    "platform": "Windows AMD64",
+    "libraries": {
+      "pandas": "3.0.5",
+      "numpy": "2.5.2",
+      "sklearn": "1.9.0",
+      "scipy": "1.18.1",
+      "pandera": "0.33.1",
+      "joblib": "1.6.0"
+    },
+    "determinism": {
+      "seed": 42,
+      "n_threads": 1,
+      "sort_kind": "quicksort",
+      "python_hash_seed": "42",
+      "thread_env": {
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1"
+      }
+    },
+    "reproducible_from_provenance": false,
+    "row_order_sha256": "8df8078e7d7e76cb",
+    "reference_milestone": "M1",
+    "reference_commit": "5f07ddc"
+  }
+}

@@ -18,6 +18,7 @@ from typing import Any
 import pandas as pd
 
 from ml_platform.config import Config, DateWindow
+from ml_platform.determinism import ROW_SORT_KIND
 
 
 @dataclass(frozen=True)
@@ -97,5 +98,7 @@ def subsample(split: Split, fraction: float, seed: int) -> Split:
     """
     if fraction >= 1.0 or split.n_rows == 0:
         return split
-    sampled = split.frame.sample(frac=fraction, random_state=seed).sort_values("ApprovalDate")
+    sampled = split.frame.sample(frac=fraction, random_state=seed).sort_values(
+        "ApprovalDate", kind=ROW_SORT_KIND
+    )
     return Split(split.name, split.window, sampled)
