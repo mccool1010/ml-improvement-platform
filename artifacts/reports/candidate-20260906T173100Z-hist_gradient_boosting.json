@@ -1,0 +1,155 @@
+{
+  "context": {
+    "run_id": "candidate-20260906T173100Z",
+    "started_at": "2026-09-06T17:31:00.467881+00:00",
+    "git_revision": "e07d5224d6efb3280619e06e39a617071351acee",
+    "git_dirty": true,
+    "config_fingerprint": "e2c5e176d965cdf2",
+    "environment": "production",
+    "seed": 42,
+    "data_sha256": "0359128a0b7599e83e4c2e4dcdd781d9121a765237f98d9f0ec1ab3e7c522548",
+    "lockfile_sha256": "3684fe686807eee6",
+    "determinism": {
+      "seed": 42,
+      "n_threads": 1,
+      "sort_kind": "quicksort",
+      "python_hash_seed": "42",
+      "thread_env": {
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1"
+      }
+    },
+    "interpreter": "CPython 3.12.14",
+    "platform": "Windows AMD64",
+    "libraries": {
+      "pandas": "3.0.5",
+      "numpy": "2.5.2",
+      "sklearn": "1.9.0",
+      "scipy": "1.18.1",
+      "pandera": "0.33.1",
+      "joblib": "1.6.0"
+    },
+    "command": "__main__.py"
+  },
+  "model_name": "hist_gradient_boosting",
+  "feature_set": "engineered",
+  "n_features": 119,
+  "train_seconds": 20.461,
+  "dataset": {
+    "name": "sba-national-7a",
+    "sha256": "0359128a0b7599e83e4c2e4dcdd781d9121a765237f98d9f0ec1ab3e7c522548",
+    "observation_end": "2014-06-25",
+    "label": "default_within_60m",
+    "horizon_months": 60,
+    "min_term_months": 60,
+    "observable_rows": 682421,
+    "row_order_sha256": "7174370c6f491542"
+  },
+  "splits": [
+    {
+      "name": "train",
+      "start": "2000-01-01",
+      "end": "2003-12-31",
+      "n_rows": 150158,
+      "n_positive": 4561,
+      "positive_rate": 0.030375
+    },
+    {
+      "name": "validation",
+      "start": "2004-01-01",
+      "end": "2004-12-31",
+      "n_rows": 54284,
+      "n_positive": 2563,
+      "positive_rate": 0.047215
+    },
+    {
+      "name": "test",
+      "start": "2005-01-01",
+      "end": "2005-12-31",
+      "n_rows": 53487,
+      "n_positive": 3651,
+      "positive_rate": 0.06826
+    },
+    {
+      "name": "production_stream",
+      "start": "2006-01-01",
+      "end": "2009-06-30",
+      "n_rows": 121664,
+      "n_positive": 23002,
+      "positive_rate": 0.189062
+    }
+  ],
+  "metrics": {
+    "train": {
+      "split": "train",
+      "n_rows": 150158,
+      "n_positive": 4561,
+      "positive_rate": 0.030375,
+      "average_precision": 0.671658,
+      "roc_auc": 0.974693,
+      "brier_score": 0.016413,
+      "brier_skill_score": 0.442727,
+      "review_capacity": 0.1,
+      "precision_at_capacity": 0.277304,
+      "recall_at_capacity": 0.912958,
+      "lift_at_capacity": 9.129455,
+      "threshold_at_capacity": 0.065136,
+      "mean_predicted_probability": 0.030282,
+      "calibration_ratio": 0.996947,
+      "inference_seconds": 5.8051,
+      "extra": {},
+      "lift_over_base_rate": 22.112198
+    },
+    "validation": {
+      "split": "validation",
+      "n_rows": 54284,
+      "n_positive": 2563,
+      "positive_rate": 0.047215,
+      "average_precision": 0.743312,
+      "roc_auc": 0.973408,
+      "brier_score": 0.022036,
+      "brier_skill_score": 0.51016,
+      "review_capacity": 0.1,
+      "precision_at_capacity": 0.414809,
+      "recall_at_capacity": 0.878658,
+      "lift_at_capacity": 8.785607,
+      "threshold_at_capacity": 0.061541,
+      "mean_predicted_probability": 0.03732,
+      "calibration_ratio": 0.790435,
+      "inference_seconds": 1.9544,
+      "extra": {},
+      "lift_over_base_rate": 15.743132
+    },
+    "test": {
+      "split": "test",
+      "n_rows": 53487,
+      "n_positive": 3651,
+      "positive_rate": 0.06826,
+      "average_precision": 0.708849,
+      "roc_auc": 0.959003,
+      "brier_score": 0.037494,
+      "brier_skill_score": 0.410467,
+      "review_capacity": 0.1,
+      "precision_at_capacity": 0.53954,
+      "recall_at_capacity": 0.790468,
+      "lift_at_capacity": 7.90424,
+      "threshold_at_capacity": 0.074085,
+      "mean_predicted_probability": 0.038961,
+      "calibration_ratio": 0.570781,
+      "inference_seconds": 1.891,
+      "extra": {},
+      "lift_over_base_rate": 10.384544
+    }
+  },
+  "validation_reports": [
+    "raw schema checked",
+    "prepared schema enforced",
+    "label horizon elapsed for every retained row"
+  ],
+  "model_path": null,
+  "mlflow_run_id": "c02eea93e8644c32b82cb592858973a8",
+  "notes": []
+}

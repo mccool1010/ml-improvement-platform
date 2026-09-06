@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from sklearn.pipeline import Pipeline
@@ -151,17 +151,17 @@ def build_tags(record: RunRecord, model_key: str) -> dict[str, str]:
     return tags
 
 
-def _ensure_experiment(mlflow: Any, config: Config) -> None:
+def _ensure_experiment(mlflow: Any, config: Config, name: str | None = None) -> None:
     """Select the experiment, creating it with a project-anchored artifact store.
 
     ``set_experiment`` alone would let MLflow default the artifact location to a
     directory relative to the working directory, which would break the M2 rule
     that nothing depends on where a command was launched from.
     """
-    existing = mlflow.get_experiment_by_name(config.experiment_name)
-    if existing is None:
-        mlflow.create_experiment(config.experiment_name, artifact_location=config.artifact_uri)
-    mlflow.set_experiment(config.experiment_name)
+    experiment = name or config.experiment_name
+    if mlflow.get_experiment_by_name(experiment) is None:
+        mlflow.create_experiment(experiment, artifact_location=config.artifact_uri)
+    mlflow.set_experiment(experiment)
 
 
 def log_run_record(
@@ -224,3 +224,129 @@ def log_run_record(
         LOGGER.warning("MLflow tracking failed; the run record is unaffected", exc_info=True)
         record.mlflow_run_id = None
         return None
+
+
+class StudyTracker:
+    """Parent and nested MLflow runs for one Optuna study.
+
+    Every method swallows its own failures. A search must not fail because a
+    recorder did, and Optuna's decision about the best trial never consults this
+    object: it only receives what already happened.
+
+    The parent run represents the study; one nested run is created per trial.
+    A trial that failed is ended with status ``FAILED``, so a study's run list
+    cannot present a failed trial as a completed one.
+    """
+
+    def __init__(self, config: Config, study_name: str) -> None:
+        self._config = config
+        self._study_name = study_name
+        self._mlflow: Any | None = None
+        self.parent_run_id: str | None = None
+
+    @property
+    def active(self) -> bool:
+        return self._mlflow is not None
+
+    def __enter__(self) -> StudyTracker:
+        if not self._config.tracking_enabled:
+            LOGGER.debug("tracking disabled; the study will not be recorded")
+            return self
+        try:
+            import mlflow
+
+            mlflow.set_tracking_uri(self._config.tracking_uri)
+            _ensure_experiment(mlflow, self._config, self._config.optimization_experiment_name)
+            run = mlflow.start_run(run_name=self._study_name)
+            self._mlflow = mlflow
+            self.parent_run_id = str(run.info.run_id)
+            mlflow.set_tags({"study": "true", "study_name": self._study_name})
+            LOGGER.info("MLflow study run %s", self.parent_run_id)
+        except Exception:
+            LOGGER.warning("could not start the MLflow study run", exc_info=True)
+            self._mlflow = None
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        if self._mlflow is not None:
+            try:
+                self._mlflow.end_run(status="FAILED" if exc_type else "FINISHED")
+            except Exception:
+                LOGGER.warning("could not close the MLflow study run", exc_info=True)
+        return False
+
+    def log_study_setup(self, config: Config) -> None:
+        """Record what the search was asked to do, before any trial runs."""
+        if self._mlflow is None:
+            return
+        try:
+            params: dict[str, Any] = {
+                "n_trials": config.n_trials,
+                "sampler": "TPESampler",
+                "sampler_seed": config.sampler_seed,
+                "objective_metric": config.objective_metric,
+                "objective_split": config.objective_split,
+                "direction": config.objective_direction,
+                "seed": config.seed,
+            }
+            for name, spec in config.search_space.items():
+                params[f"space_{name}"] = str(spec)
+            self._mlflow.log_params(params)
+        except Exception:
+            LOGGER.warning("could not log study setup", exc_info=True)
+
+    def log_trial(
+        self,
+        number: int,
+        params: dict[str, Any],
+        metrics: dict[str, float],
+        *,
+        failed: bool = False,
+    ) -> None:
+        """Record one trial as a nested run under the study."""
+        if self._mlflow is None:
+            return
+        try:
+            self._mlflow.start_run(run_name=f"trial-{number:03d}", nested=True)
+            try:
+                self._mlflow.log_params({f"hp_{k}": v for k, v in params.items()})
+                if metrics:
+                    self._mlflow.log_metrics(metrics)
+                self._mlflow.set_tags(
+                    {
+                        "trial_number": str(number),
+                        "trial_state": "FAIL" if failed else "COMPLETE",
+                        "study_name": self._study_name,
+                    }
+                )
+            finally:
+                self._mlflow.end_run(status="FAILED" if failed else "FINISHED")
+        except Exception:
+            LOGGER.warning("could not log trial %s", number, exc_info=True)
+
+    def log_best(self, result: Any) -> None:
+        """Record the winning trial on the parent run.
+
+        Optuna selected it; this only writes it down.
+        """
+        if self._mlflow is None:
+            return
+        try:
+            metrics: dict[str, float] = {
+                "n_completed_trials": float(result.n_completed),
+                "n_failed_trials": float(result.n_failed),
+            }
+            if result.best_value is not None:
+                metrics["best_objective_value"] = float(result.best_value)
+                metrics["best_trial_number"] = float(result.best_trial_number or 0)
+            if result.baseline_value is not None:
+                metrics["untuned_objective_value"] = float(result.baseline_value)
+            if result.improvement_over_untuned is not None:
+                metrics["improvement_over_untuned"] = float(result.improvement_over_untuned)
+
+            self._mlflow.log_metrics(metrics)
+            if result.best_params:
+                self._mlflow.log_params({f"best_{k}": v for k, v in result.best_params.items()})
+            self._mlflow.log_dict(result.to_dict(), "study.json")
+        except Exception:
+            LOGGER.warning("could not log the study result", exc_info=True)

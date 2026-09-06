@@ -112,6 +112,43 @@ and `ml_platform reproduce` never reads MLflow. Tracking failures are logged and
 swallowed, so a recorder can never fail a training run. Set `tracking.enabled` to
 `false` in `configs/base.yaml` to turn it off.
 
+## Hyperparameter optimisation (Optuna)
+
+```bash
+uv run python -m ml_platform optimize                 # configured budget
+uv run python -m ml_platform optimize --trials 10     # shorter run
+
+uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts
+# study runs live in the `sba-loan-default-optimization` experiment
+```
+
+**Search space**, defined in `configs/model.yaml` so widening a bound shows up in
+the config fingerprint. Five parameters, chosen because each is a real lever on
+gradient boosting: `learning_rate` (0.01 to 0.3, log), `max_iter` (100 to 400,
+step 50), `max_leaf_nodes` (15 to 63), `min_samples_leaf` (20 to 200), and
+`l2_regularization` (1e-4 to 10, log).
+
+**Objective:** average precision on the **validation** split, maximised. The test
+split is never scored during a search; selecting hyperparameters against it would
+turn the final honest number into a training metric, and the objective raises if
+configured to use it.
+
+**Budget:** 25 trials, sampled by `TPESampler` with an explicit seed. Optuna seeds
+itself from entropy otherwise, so a study would not be reproducible.
+
+**Best candidate:** chosen by Optuna from values the project's own
+`evaluate_model` produced. A trial that raises is caught, recorded in `FAIL`
+state and excluded from `best_trial`, so a failed trial can never be selected.
+MLflow records the decision and never makes it.
+
+The winner is then trained through the ordinary `run_training` path and compared
+against a freshly trained baseline, so both sides of the comparison are real
+`RunRecord`s from identical machinery. Deciding whether the improvement is large
+enough to deploy is M6, not this milestone.
+
+MLflow layout: one parent run per study, one nested run per trial, with the best
+parameters and `study.json` on the parent.
+
 Development commands:
 
 ```bash

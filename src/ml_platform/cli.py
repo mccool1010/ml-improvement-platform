@@ -131,6 +131,37 @@ def command_reproduce(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_optimize(args: argparse.Namespace) -> int:
+    """Search the candidate's hyperparameters and compare the winner to baseline."""
+    _bootstrap(args.environment)
+    from ml_platform.pipelines.optimize_pipeline import run_optimization
+
+    result = run_optimization(
+        environment=args.environment,
+        n_trials=args.trials,
+        save_model=not args.no_save,
+        nrows=args.nrows,
+    )
+
+    study = result.study
+    comparison = result.comparison()
+    print()
+    print(f"study {study.study_name}: {study.n_completed} completed, {study.n_failed} failed")
+    print(f"  objective        {study.objective_metric} on {study.objective_split}")
+    print(f"  best trial       #{study.best_trial_number}  value={study.best_value:.6f}")
+    print(f"  untuned value    {study.baseline_value:.6f}")
+    print(f"  search gain      {study.improvement_over_untuned:+.6f}")
+    print(f"  best params      {study.best_params}")
+    print(f"  mlflow study run {result.parent_run_id}")
+    print()
+    print(f"held-out test {comparison['metric']}:")
+    print(f"  baseline         {comparison['baseline']:.6f}")
+    print(f"  tuned candidate  {comparison['tuned_candidate']:.6f}")
+    print(f"  improvement      {comparison['absolute_improvement']:+.6f}")
+    print(f"  improved         {comparison['improved']}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m ml_platform",
@@ -157,6 +188,16 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--no-save", action="store_true", help="skip writing the model artifact")
     train.add_argument("--nrows", type=int, default=None, help="read only N raw rows (smoke test)")
     train.set_defaults(handler=command_train)
+
+    optimize = subparsers.add_parser(
+        "optimize", help="run a hyperparameter search and compare it to the baseline"
+    )
+    optimize.add_argument("--trials", type=int, default=None, help="override the configured budget")
+    optimize.add_argument("--no-save", action="store_true", help="skip writing the model artifact")
+    optimize.add_argument(
+        "--nrows", type=int, default=None, help="read only N raw rows (smoke test)"
+    )
+    optimize.set_defaults(handler=command_optimize)
 
     repro = subparsers.add_parser(
         "reproduce", help="verify the run against locked reference metrics"

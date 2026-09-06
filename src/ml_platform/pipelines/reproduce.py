@@ -201,6 +201,16 @@ def reproduce(
     reference = load_reference(config_dir)
     cfg = config or load_config(environment)
 
+    # Reproduction is verification, not experimentation. It re-runs training
+    # purely to confirm the recorded numbers still hold, so logging those runs
+    # would duplicate the experiment history with rows nobody wants to compare.
+    # Disabling it also keeps this command's answer independent of MLflow.
+    if cfg.tracking_enabled:
+        cfg = Config(
+            raw={**cfg.raw, "tracking": {**cfg.raw.get("tracking", {}), "enabled": False}},
+            environment=cfg.environment,
+        )
+
     records: dict[str, RunRecord] = {}
     for model_key in ("baseline", "candidate"):
         LOGGER.info("training %s", model_key)

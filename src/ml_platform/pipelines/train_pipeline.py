@@ -126,8 +126,14 @@ def run_training(
     config: Config | None = None,
     save_model: bool = True,
     nrows: int | None = None,
+    param_overrides: dict[str, Any] | None = None,
 ) -> RunRecord:
-    """Train one model end to end and return its run record."""
+    """Train one model end to end and return its run record.
+
+    ``param_overrides`` replaces individual hyperparameters in the configured
+    specification. It exists so a tuned candidate from M5 reaches the same
+    RunRecord machinery as every other run, rather than a parallel path.
+    """
     cfg = config or load_config(environment)
 
     # Seeds and thread pinning are applied here so that calling this function
@@ -155,6 +161,9 @@ def run_training(
         }
 
     spec = dict(cfg.raw[model_key])
+    if param_overrides:
+        spec["params"] = {**dict(spec.get("params") or {}), **param_overrides}
+        LOGGER.info("applying %d hyperparameter override(s)", len(param_overrides))
     trained = train(spec, splits["train"], cfg.target_column)
 
     metrics: dict[str, dict[str, Any]] = {}

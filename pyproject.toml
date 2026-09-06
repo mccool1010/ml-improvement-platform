@@ -17,6 +17,7 @@ dependencies = [
     "pyyaml>=6.0",
     "joblib>=1.4",
     "mlflow>=3.16.0",
+    "optuna>=4.0",
 ]
 
 [project.optional-dependencies]

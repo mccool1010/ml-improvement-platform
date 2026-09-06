@@ -231,3 +231,48 @@ class TestFullReproduction:
         # Bit-exact, not merely within tolerance, on the reference platform.
         assert result.exact_matches == result.metrics_compared
         assert result.metrics_compared == 48
+
+
+class TestReproduceIsMlflowFree:
+    """Verification must not write experiment runs.
+
+    `reproduce` re-trains only to confirm the recorded numbers still hold. Those
+    runs are not experiments, and logging them would duplicate the history with
+    rows nobody wants to compare. It also keeps the command's answer independent
+    of MLflow entirely.
+    """
+
+    def test_tracking_is_disabled_even_when_configured_on(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from ml_platform.config import load_config
+
+        seen: list[bool] = []
+
+        def _capture(**kwargs: Any) -> Any:
+            seen.append(bool(kwargs["config"].tracking_enabled))
+            raise RuntimeError("stop after the config is resolved")
+
+        base = load_config("production")
+        assert base.tracking_enabled, "this test is meaningless unless tracking is on"
+
+        monkeypatch.setattr(rp, "run_training", _capture)
+        with pytest.raises(RuntimeError, match="stop after"):
+            rp.reproduce(environment="production")
+
+        assert seen == [False]
+
+    def test_an_explicit_config_is_also_forced_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from ml_platform.config import load_config
+
+        seen: list[bool] = []
+
+        def _capture(**kwargs: Any) -> Any:
+            seen.append(bool(kwargs["config"].tracking_enabled))
+            raise RuntimeError("stop")
+
+        monkeypatch.setattr(rp, "run_training", _capture)
+        with pytest.raises(RuntimeError, match="stop"):
+            rp.reproduce(config=load_config("production"))
+
+        assert seen == [False]

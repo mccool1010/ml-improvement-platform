@@ -25,3 +25,30 @@ candidate:
     l2_regularization: 0.0
     random_state: 42
   feature_set: engineered
+
+# M5. Hyperparameter search for the candidate model.
+#
+# The search space is bounded and every entry is a parameter that plausibly moves
+# gradient boosting on tabular data. Nothing is searched merely to exercise
+# Optuna: capacity (leaf count, iterations), step size (learning rate) and
+# regularisation (leaf size, L2) are the levers that matter here.
+optimization:
+  # Small enough to run locally and to reproduce exactly.
+  n_trials: 25
+  # Explicit, so the sampler is deterministic rather than seeded from entropy.
+  sampler_seed: 42
+  # Trials are scored on the validation split. The test split is the final
+  # honest number and is never touched during a search, or it stops being one.
+  objective:
+    metric: average_precision
+    split: validation
+    direction: maximize
+  # Study runs live in their own experiment so nested trial runs do not bury the
+  # ordinary training runs in the main one.
+  experiment_name: sba-loan-default-optimization
+  search_space:
+    learning_rate:     { type: float, low: 0.01, high: 0.3, log: true }
+    max_iter:          { type: int,   low: 100,  high: 400, step: 50 }
+    max_leaf_nodes:    { type: int,   low: 15,   high: 63 }
+    min_samples_leaf:  { type: int,   low: 20,   high: 200 }
+    l2_regularization: { type: float, low: 0.0001, high: 10.0, log: true }

@@ -1,0 +1,42 @@
+{
+  "profile": "strict",
+  "passed": true,
+  "metrics_compared": 48,
+  "exact_matches": 48,
+  "deviations": [],
+  "split_mismatches": [],
+  "provenance": {
+    "git_revision": "e07d5224d6efb3280619e06e39a617071351acee",
+    "git_dirty": true,
+    "config_fingerprint": "e2c5e176d965cdf2",
+    "dataset_sha256": "0359128a0b7599e83e4c2e4dcdd781d9121a765237f98d9f0ec1ab3e7c522548",
+    "lockfile_sha256": "3684fe686807eee6",
+    "interpreter": "CPython 3.12.14",
+    "platform": "Windows AMD64",
+    "libraries": {
+      "pandas": "3.0.5",
+      "numpy": "2.5.2",
+      "sklearn": "1.9.0",
+      "scipy": "1.18.1",
+      "pandera": "0.33.1",
+      "joblib": "1.6.0"
+    },
+    "determinism": {
+      "seed": 42,
+      "n_threads": 1,
+      "sort_kind": "quicksort",
+      "python_hash_seed": "42",
+      "thread_env": {
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1"
+      }
+    },
+    "reproducible_from_provenance": false,
+    "row_order_sha256": "7174370c6f491542",
+    "reference_milestone": "M1 (re-locked at M3)",
+    "reference_commit": "ce859b8"
+  }
+}

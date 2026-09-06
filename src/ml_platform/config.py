@@ -143,6 +143,45 @@ class Config:
         """Where MLflow stores run artifacts, as a file URI under the project."""
         return resolve(str(self._tracking.get("artifact_dir", "mlartifacts"))).as_uri()
 
+    # --- optimisation (M5) -----------------------------------------------
+    @property
+    def _optimization(self) -> dict[str, Any]:
+        return dict(self.raw.get("optimization") or {})
+
+    @property
+    def n_trials(self) -> int:
+        return int(self._optimization.get("n_trials", 25))
+
+    @property
+    def sampler_seed(self) -> int:
+        """Seeded explicitly; Optuna's default sampler seeds itself from entropy."""
+        return int(self._optimization.get("sampler_seed", self.seed))
+
+    @property
+    def search_space(self) -> dict[str, Any]:
+        return dict(self._optimization.get("search_space") or {})
+
+    @property
+    def objective_metric(self) -> str:
+        return str(
+            dict(self._optimization.get("objective") or {}).get("metric", "average_precision")
+        )
+
+    @property
+    def objective_split(self) -> str:
+        """Split a search is scored on. Never the test split."""
+        return str(dict(self._optimization.get("objective") or {}).get("split", "validation"))
+
+    @property
+    def objective_direction(self) -> str:
+        return str(dict(self._optimization.get("objective") or {}).get("direction", "maximize"))
+
+    @property
+    def optimization_experiment_name(self) -> str:
+        return str(
+            self._optimization.get("experiment_name", f"{self.experiment_name}-optimization")
+        )
+
     @property
     def observation_end(self) -> date:
         return _as_date(self.raw["data"]["observation_end"])
