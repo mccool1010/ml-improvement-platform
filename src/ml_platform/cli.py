@@ -198,6 +198,15 @@ def command_promote(args: argparse.Namespace) -> int:
     return 0 if report.promote else 1
 
 
+def command_serve(args: argparse.Namespace) -> int:
+    """Serve the promoted production model over HTTP."""
+    _bootstrap(args.environment)
+    import uvicorn
+
+    uvicorn.run("ml_platform.api.main:app", host=args.host, port=args.port, log_level="info")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m ml_platform",
@@ -242,6 +251,11 @@ def build_parser() -> argparse.ArgumentParser:
     promote.add_argument("--no-register", action="store_true", help="evaluate gates only")
     promote.add_argument("--nrows", type=int, default=None, help="read only N raw rows")
     promote.set_defaults(handler=command_promote)
+
+    serve = subparsers.add_parser("serve", help="serve the production model over HTTP")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8000)
+    serve.set_defaults(handler=command_serve)
 
     repro = subparsers.add_parser(
         "reproduce", help="verify the run against locked reference metrics"

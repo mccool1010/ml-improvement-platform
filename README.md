@@ -187,6 +187,46 @@ outright, so a wiring mistake cannot route a rejected model into the registry.
 
 The gate report, not MLflow, decides. MLflow records the outcome.
 
+## Inference API
+
+```bash
+uv run python -m ml_platform serve                      # http://127.0.0.1:8000
+# interactive docs at /docs
+```
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Liveness. Answers whenever the process is up |
+| `GET /ready` | Readiness. Whether a promoted model is loaded, and why not if it is not |
+| `GET /model` | Which model is serving, and where it came from |
+| `POST /predict` | Score one or more loan applications |
+
+Example:
+
+```bash
+curl -s localhost:8000/predict -H 'content-type: application/json' -d '{
+  "applications": [{
+    "term_months": 84, "employees": 12, "jobs_created": 3, "jobs_retained": 8,
+    "gross_approved": 250000, "sba_approved": 187500, "disbursed": 250000,
+    "state": "CA", "bank_state": "CA", "revolving_line_of_credit": "N",
+    "low_doc": "N", "urban_rural": 1, "new_business": 1, "naics": "722410",
+    "franchise_code": 0, "approval_date": "2005-06-15",
+    "disbursement_date": "2005-07-20"
+  }]
+}'
+```
+
+The model is resolved through the `production` registry alias, the same mechanism
+M6 promotion uses, and loaded **once at startup**. There is no fallback to the
+newest run or to a file on disk: with no promoted model the service starts,
+`/health` answers, and `/ready` reports why it cannot serve. Serving something
+nobody promoted would defeat the promotion system.
+
+Requests are loan applications in the lender's own terms. Features are derived by
+the same `features.engineering` code the model was trained with, so the served
+representation cannot drift from the trained one. Every response carries the
+model name, version and both run identities, so a score is traceable.
+
 Development commands:
 
 ```bash

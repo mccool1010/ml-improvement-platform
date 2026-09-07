@@ -151,7 +151,15 @@ def _version_tags(record: RunRecord, report: GateReport) -> dict[str, str]:
     for key in ("row_order_sha256", "label", "horizon_months"):
         if key in record.dataset:
             tags[f"dataset_{key}"] = str(record.dataset[key])
-    for metric in ("average_precision", "roc_auc", "brier_score", "recall_at_capacity"):
+    # threshold_at_capacity is the operating point the API serves at; without
+    # it a single prediction has no threshold of its own to compare against.
+    for metric in (
+        "average_precision",
+        "roc_auc",
+        "brier_score",
+        "recall_at_capacity",
+        "threshold_at_capacity",
+    ):
         if metric in metrics:
             tags[f"{report.decision_split}_{metric}"] = str(metrics[metric])
     return tags
