@@ -28,6 +28,8 @@ data/processed/*
 *.joblib
 *.pkl
 /optuna.db
+/.build.log
+/.suite.log
 
 # Run records and benchmarks ARE the project's evidence, so they are tracked.
 #
