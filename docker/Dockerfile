@@ -1,0 +1,76 @@
+# Inference API image.
+#
+# Two stages. The builder resolves dependencies with uv from the committed
+# lockfile, so the image gets the exact versions the project's reproducibility
+# contract records. The runtime stage carries only the virtualenv and the
+# application, not uv, not a compiler, and not the test suite.
+#
+# What is deliberately NOT in this image:
+#   - the 179 MB raw register: the API scores requests, it does not train
+#   - the MLflow store: mounted at run time, so the image is not tied to one
+#     registry and a promotion does not require a rebuild
+#   - tests, notebooks, docs, git history
+
+# ---- builder ---------------------------------------------------------------
+FROM python:3.12-slim-bookworm AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:0.5 /uv /usr/local/bin/uv
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never
+
+WORKDIR /app
+
+# Dependencies resolve from the lockfile alone, so this layer is rebuilt only
+# when the lockfile changes, not on every source edit.
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --frozen --no-install-project --no-dev
+
+# The project itself, installed into the same environment.
+COPY src/ ./src/
+RUN uv sync --frozen --no-dev
+
+# ---- runtime ---------------------------------------------------------------
+FROM python:3.12-slim-bookworm AS runtime
+
+# curl is present for the container healthcheck below and nothing else.
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 10001 appuser
+
+WORKDIR /app
+
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+COPY --chown=appuser:appuser src/ ./src/
+COPY --chown=appuser:appuser configs/ ./configs/
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    MLFLOW_DISABLE_AGENT_HINT=1 \
+    # Native thread pools are pinned here as well as in the CLI, because uvicorn
+    # imports the app directly and never passes through `_bootstrap`.
+    OMP_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1 \
+    VECLIB_MAXIMUM_THREADS=1
+
+# Writable mount points for the MLflow store. Owned by appuser so a bind mount
+# or volume works without running as root.
+RUN mkdir -p /app/mlartifacts /app/artifacts/reports /app/artifacts/benchmarks \
+    && chown -R appuser:appuser /app/mlartifacts /app/artifacts
+
+USER appuser
+
+EXPOSE 8000
+
+# Readiness is the honest signal here: the process can be healthy while holding
+# no promoted model. The healthcheck therefore asks /health, and an orchestrator
+# gates traffic on /ready.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -fsS http://localhost:8000/health || exit 1
+
+CMD ["uvicorn", "ml_platform.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

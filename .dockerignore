@@ -1,13 +1,46 @@
+# Everything the image does not need. Keeping this tight matters for more than
+# size: the raw register is 179 MB, and the MLflow store would bake one
+# particular registry state into an image that should be able to serve any.
+
 .git/
+.github/
 .venv/
+
+# Data and stores. The register is for training; the API only scores. The MLflow
+# store is mounted at run time so a promotion needs no rebuild.
 data/
 mlruns/
-notebooks/
+mlartifacts/
+mlflow.db
+models/
+*.joblib
+*.pkl
+optuna.db
+
+# Evidence and development material
 artifacts/
+notebooks/
 docs/
 tests/
+scripts/
+k8s/
+monitoring/
+
+# Caches and local state
+__pycache__/
+*.py[cod]
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-__pycache__/
+.coverage
+htmlcov/
 *.egg-info/
+.env
+.env.*
+.idea/
+.vscode/
+.DS_Store
+
+# The image builds from the Dockerfile; it does not need a copy of itself.
+docker/
+Makefile

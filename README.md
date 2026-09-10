@@ -227,6 +227,34 @@ the same `features.engineering` code the model was trained with, so the served
 representation cannot drift from the trained one. Every response carries the
 model name, version and both run identities, so a score is traceable.
 
+## Container
+
+```bash
+docker build -f docker/Dockerfile -t ml-platform-api:latest .
+
+# The MLflow store is mounted, not baked in, so promoting a model needs no rebuild.
+docker run --rm -p 8000:8000   -v "$PWD/mlflow.db:/app/mlflow.db"   -v "$PWD/mlartifacts:/app/mlartifacts"   ml-platform-api:latest
+
+curl -fsS localhost:8000/health
+curl -fsS localhost:8000/ready
+```
+
+Two stages. The builder resolves dependencies with `uv sync --frozen` from the
+committed lockfile, so the image gets the exact versions the reproducibility
+contract records. The runtime stage carries only the virtualenv, `src/` and
+`configs/`, and runs as a non-root user on port 8000.
+
+The image deliberately excludes the 179 MB register (the API scores, it does not
+train) and the MLflow store. Baking the store in would freeze one registry state
+into the image, so a promotion would mean a rebuild.
+
+Native thread pools are pinned in the image environment, because uvicorn imports
+the app directly and never passes through the CLI bootstrap that pins them.
+
+The `HEALTHCHECK` uses `/health`, not `/ready`. A container holding no promoted
+model is alive and should not be restarted; withholding traffic is what `/ready`
+is for.
+
 Development commands:
 
 ```bash
