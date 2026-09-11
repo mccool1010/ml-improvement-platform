@@ -182,17 +182,21 @@ class TestHealthAndReadiness:
         assert response.json()["status"] == "ok"
 
     def test_readiness_is_false_without_a_model(self, unready_app: FastAPI) -> None:
+        """503, not 200. A Kubernetes readiness probe reads only the status code,
+        so answering 200 here would route traffic to a pod holding no model."""
         with _client(unready_app) as client:
             response = client.get("/ready")
         payload = response.json()
-        assert response.status_code == 200
+        assert response.status_code == 503
         assert payload["status"] == "not_ready"
         assert payload["model_loaded"] is False
         assert "production" in payload["detail"]
 
     def test_readiness_is_true_with_a_model(self, ready_app: FastAPI) -> None:
         with _client(ready_app) as client:
-            payload = client.get("/ready").json()
+            response = client.get("/ready")
+        payload = response.json()
+        assert response.status_code == 200
         assert payload["status"] == "ready"
         assert payload["model"]["version"] == "1"
 

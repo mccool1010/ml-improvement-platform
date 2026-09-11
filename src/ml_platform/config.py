@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -20,6 +21,15 @@ import yaml
 from ml_platform.paths import project_root, resolve
 
 CONFIG_DIR = project_root() / "configs"
+
+#: Environment variable that overrides the configured tracking backend. Named
+#: for MLflow's own convention so a deployment sets one familiar thing.
+ENV_TRACKING_URI = "MLFLOW_TRACKING_URI"
+
+#: Address of the KServe model tier. Its presence is what decides where scoring
+#: happens: set, the API calls the InferenceService; unset, it loads the model
+#: itself. One switch, so the two cannot be configured into contradiction.
+ENV_PREDICTOR_URL = "ML_PLATFORM_PREDICTOR_URL"
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -129,8 +139,17 @@ class Config:
         A ``sqlite:///`` URI carrying a relative path is rewritten to an absolute
         one, so the store does not move with the working directory. Anything
         else, including a remote server, passes through untouched.
+
+        ``MLFLOW_TRACKING_URI`` in the environment takes precedence. That is how
+        a deployment supplies the address of its own tracking server without an
+        environment-specific value being baked into the image, and it is the
+        variable the MLflow ecosystem already uses. Without this the variable
+        would be silently ignored, because every call site sets the URI from
+        configuration explicitly.
         """
-        raw = str(self._tracking.get("backend_uri", "sqlite:///mlflow.db"))
+        raw = os.environ.get(ENV_TRACKING_URI) or str(
+            self._tracking.get("backend_uri", "sqlite:///mlflow.db")
+        )
         prefix = "sqlite:///"
         if raw.startswith(prefix):
             target = raw[len(prefix) :]
@@ -139,9 +158,53 @@ class Config:
         return raw
 
     @property
-    def artifact_uri(self) -> str:
-        """Where MLflow stores run artifacts, as a file URI under the project."""
+    def tracking_is_remote(self) -> bool:
+        """Whether tracking goes to a server rather than a local store.
+
+        A remote server owns its own artifact root and serves artifacts over
+        HTTP, so the client must not impose a local path on it. That is the
+        distinction that makes the store portable: a path chosen here is
+        recorded in the database and becomes meaningless on any other machine.
+        """
+        return self.tracking_uri.startswith(("http://", "https://"))
+
+    @property
+    def artifact_uri(self) -> str | None:
+        """Where MLflow stores run artifacts, as a file URI under the project.
+
+        ``None`` against a remote tracking server, which assigns its own
+        artifact location. See :attr:`tracking_is_remote`.
+        """
+        if self.tracking_is_remote:
+            return None
         return resolve(str(self._tracking.get("artifact_dir", "mlartifacts"))).as_uri()
+
+    # --- serving (M11) ----------------------------------------------------
+    @property
+    def _serving(self) -> dict[str, Any]:
+        return dict(self.raw.get("serving") or {})
+
+    @property
+    def predictor_url(self) -> str | None:
+        """Base URL of the KServe predictor, or ``None`` to score in process.
+
+        ADR-002 makes KServe the canonical serving path in Kubernetes and leaves
+        FastAPI as the application tier in front of it. Locally there is no
+        cluster and no InferenceService, so the API loads the model itself. This
+        is the single value that distinguishes those two, and it is set by the
+        deployment rather than chosen by the code.
+        """
+        configured = os.environ.get(ENV_PREDICTOR_URL) or self._serving.get("predictor_url")
+        return str(configured) if configured else None
+
+    @property
+    def predictor_model_name(self) -> str:
+        """Model name in the predictor's V1 paths; the InferenceService's name."""
+        return str(self._serving.get("predictor_model_name", "sba-loan-default"))
+
+    @property
+    def predictor_timeout_seconds(self) -> float:
+        return float(self._serving.get("predictor_timeout_seconds", 10.0))
 
     # --- promotion (M6) ---------------------------------------------------
     @property

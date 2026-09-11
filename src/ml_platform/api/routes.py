@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from ml_platform.api.model import ModelNotLoadedError, ModelService
 from ml_platform.api.schemas import (
@@ -25,6 +25,7 @@ from ml_platform.api.schemas import (
     PredictionResponse,
     ReadinessResponse,
 )
+from ml_platform.serving.client import PredictorError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ def _model_info(service: ModelService) -> ModelInfo:
         platform_run_id=model.platform_run_id,
         decision_threshold=model.decision_threshold,
         threshold_source=model.threshold_source,
+        served_by=model.served_by,
     )
 
 
@@ -63,15 +65,30 @@ def health() -> HealthResponse:
     return HealthResponse(status="ok", service=SERVICE_NAME)
 
 
-@router.get("/ready", response_model=ReadinessResponse, tags=["operations"])
-def ready(request: Request) -> ReadinessResponse:
-    """Readiness. Reports whether a promoted model is loaded and can score."""
+@router.get(
+    "/ready",
+    response_model=ReadinessResponse,
+    tags=["operations"],
+    responses={status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ReadinessResponse}},
+)
+def ready(request: Request, response: Response) -> ReadinessResponse:
+    """Readiness. Reports whether a promoted model is loaded and can score.
+
+    Not ready answers 503, not 200. An orchestrator decides whether to route
+    traffic from the status code alone and never reads the body, so a readiness
+    endpoint that always answered 200 would place a pod holding no model into
+    the Service's endpoints. The body is unchanged either way, because a human
+    reading it wants the reason.
+    """
     service = _service(request)
-    if not service.loaded:
+    ready_now, detail = service.readiness()
+    if not ready_now:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return ReadinessResponse(
             status="not_ready",
-            model_loaded=False,
-            detail=service.error or "no production model is loaded",
+            model_loaded=service.loaded,
+            detail=detail or "no production model is loaded",
+            model=_model_info(service) if service.loaded else None,
         )
     return ReadinessResponse(status="ready", model_loaded=True, model=_model_info(service))
 
@@ -112,6 +129,16 @@ def predict(request: Request, payload: PredictionRequest) -> PredictionResponse:
 
     try:
         probabilities = model.predict(frame)
+    except PredictorError as exc:
+        # The model tier is unreachable or refused. The caller's request was
+        # fine, so this is not 422: blaming a valid request for a dependency
+        # failure sends the client looking in the wrong place, and a retry of
+        # the identical request may well succeed.
+        LOGGER.warning("the model tier could not be reached", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"the model tier could not be reached: {exc}",
+        ) from exc
     except Exception as exc:
         LOGGER.warning("scoring failed", exc_info=True)
         raise HTTPException(

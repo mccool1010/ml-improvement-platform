@@ -148,6 +148,9 @@ class ModelInfo(BaseModel):
     platform_run_id: str | None
     decision_threshold: float
     threshold_source: str
+    #: "kserve" when a KServe InferenceService scored it, "in-process" when this
+    #: service did. Reported so which tier answered is never inferred.
+    served_by: str = "in-process"
 
 
 class Prediction(BaseModel):

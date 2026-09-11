@@ -1,0 +1,24 @@
+# Applied as a unit: `kubectl apply -k k8s/base`.
+#
+# The numeric filename prefixes are the order a reader needs, not an ordering
+# kubectl honours; it applies namespaces and then the rest regardless. They are
+# kept because the dependency chain is real -- storage, then the server, then the
+# service name the API is configured with.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ml-platform
+
+resources:
+  - 00-namespace.yaml
+  - 10-mlflow-pvc.yaml
+  - 11-mlflow-deployment.yaml
+  - 12-mlflow-service.yaml
+  - 20-api-configmap.yaml
+  - 21-api-deployment.yaml
+  - 22-api-service.yaml
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: ml-platform

@@ -297,6 +297,59 @@ no registry mounted; it cannot yet load a real promoted model, because the local
 MLflow store records absolute host paths. The reasoning, the local equivalents of
 every CI command, and that limitation in full are in [docs/ci.md](docs/ci.md).
 
+## Kubernetes
+
+```bash
+docker build -f docker/Dockerfile -t ml-platform-api:m10 .
+kubectl apply -k k8s/base
+kubectl -n ml-platform rollout status deploy/mlflow
+
+# The registry starts empty, so the API pods run but stay out of rotation.
+kubectl -n ml-platform port-forward svc/mlflow 5000:5000 &
+uv run python scripts/seed_registry.py --destination http://localhost:5000
+
+kubectl -n ml-platform port-forward svc/inference-api 8080:80 &
+curl -s localhost:8080/ready
+```
+
+Two workloads: the inference API, and an MLflow tracking server started with
+`--serve-artifacts`. The server is what makes the deployment possible at all.
+M8 established that the local store records an absolute host artifact path in its
+database, which no pod can resolve; a server that brokers artifacts over HTTP
+records `mlflow-artifacts:/...` instead, so nothing outside the cluster is ever
+named. It runs the project's own image, so the MLflow build that writes the
+registry is the one from `uv.lock` that reads it.
+
+The API finds it through cluster DNS at `http://mlflow:5000`, supplied by a
+ConfigMap. That is the only value that comes from Kubernetes, because it is the
+only one that differs between a laptop and a cluster. There is no Secret, because
+there is no credential yet.
+
+Liveness asks `/health`, readiness asks `/ready`, and a pod with no promoted
+model stays running and out of the Service's endpoints rather than restarting in
+a loop. See [docs/kubernetes.md](docs/kubernetes.md) for the full runbook and the
+remaining limitations.
+
+## KServe
+
+The model is served by a KServe `InferenceService`, not by the FastAPI
+Deployment. FastAPI is the application tier in front of it: it validates the
+application, resolves the `production` alias in MLflow, reports which version
+answered, and calls the model tier for the score. One production serving path,
+as [ADR-002](docs/decisions/ADR-002-serving.md) decided at M0.
+
+```bash
+kubectl apply -k k8s/kserve
+kubectl -n ml-platform get isvc sba-loan-default
+```
+
+KServe v0.20.0 in RawDeployment mode, with cert-manager and no Knative, Istio or
+Gateway API. The predictor runs the project's own image because the registered
+artifact pins `scikit-learn==1.9.0` and is cloudpickle-serialised, which the
+stock `seldonio/mlserver` runtime cannot satisfy. It reads the artifact from the
+tracking server's volume at the path the registry records for the promoted
+version. See [docs/kserve.md](docs/kserve.md).
+
 ## Design decisions worth knowing
 
 **The label is a fixed 60-month horizon, not "did it eventually default".** The
@@ -335,6 +388,8 @@ reproducibility check compares that hash exactly.
 | [docs/reproducibility.md](docs/reproducibility.md) | What is pinned, the tolerances, and remaining nondeterminism |
 | [docs/testing.md](docs/testing.md) | The test tiers and the ML assumptions each one protects |
 | [docs/ci.md](docs/ci.md) | What CI checks, how to run those checks locally, and what it cannot test yet |
+| [docs/kubernetes.md](docs/kubernetes.md) | The cluster architecture, the tracking server it needed, and the deploy runbook |
+| [docs/kserve.md](docs/kserve.md) | The two serving tiers, the runtime choice, and the KServe install |
 | [ADR-001](docs/decisions/ADR-001-model-choice.md) | Dataset, label and model family |
 | [ADR-002](docs/decisions/ADR-002-serving.md) | Why KServe is the only serving path |
 | [ADR-003](docs/decisions/ADR-003-promotion-strategy.md) | Promotion gates, drift, rollback |
@@ -353,7 +408,9 @@ reproducibility check compares that hash exactly.
 | M7 inference API | Complete, FastAPI resolving the `production` registry alias |
 | M8 containerisation | Complete, two-stage image, non-root, no data or store baked in |
 | M9 CI/CD | Complete, GitHub Actions: static checks, tests, reproduction, image build |
-| M10 to M16 | Planned |
+| M10 Kubernetes | Complete, API and an MLflow tracking server, with artifacts served over HTTP |
+| M11 KServe serving | Complete, KServe owns the model tier; FastAPI is the application tier |
+| M12 to M16 | Planned |
 
 Built milestone by milestone, each verified by running it.
 

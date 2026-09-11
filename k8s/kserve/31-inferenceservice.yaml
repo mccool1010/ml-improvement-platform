@@ -1,0 +1,85 @@
+# The model tier.
+#
+# This is the only thing in the cluster that loads the model and produces a
+# score. The FastAPI Deployment in k8s/base is the application tier in front of
+# it: it validates the request, builds features, reports which version answered,
+# and calls this. There is one production serving path, and it ends here.
+#
+# storageUri is a `pvc://` reference to the volume the MLflow tracking server
+# writes to, at the path the registry itself records for the promoted version:
+#
+#     registry source:  mlflow-artifacts:/1/<run id>/artifacts/model
+#     on the volume:    /artifacts/1/<run id>/artifacts/model
+#
+# The run id is therefore not an arbitrary string. It is the traceable link back
+# to the version carrying the `production` alias, and scripts/kserve_model_uri.py
+# derives this value from the registry rather than anyone typing it.
+#
+# Deliberately NOT automatic: nothing here watches the registry. M10 established
+# that the cluster registry is seeded, not synchronised, and inventing a
+# reconciler would be a different milestone with different failure modes.
+# Promoting a new version means deriving the URI again and re-applying.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: sba-loan-default
+  namespace: ml-platform
+  labels:
+    app.kubernetes.io/name: sba-loan-default
+    app.kubernetes.io/component: model
+    app.kubernetes.io/part-of: ml-platform
+  annotations:
+    # No Knative and no service mesh in this cluster. Raw mode gives a plain
+    # Deployment, Service and HPA, which is all the model tier needs while
+    # traffic splitting is still a later milestone.
+    serving.kserve.io/deploymentMode: RawDeployment
+    # Traceability, carried on the object a reader will actually look at.
+    ml-platform.io/registered-model: sba-loan-default-classifier
+    ml-platform.io/model-version: "1"
+    ml-platform.io/registry-alias: production
+    ml-platform.io/platform-run-id: candidate-20260906T175308Z
+spec:
+  predictor:
+    # One replica. Autoscaling the model tier is not this milestone's question,
+    # and a second replica would only double the memory for no served benefit.
+    minReplicas: 1
+    maxReplicas: 1
+    model:
+      modelFormat:
+        name: mlflow
+        version: "3"
+      # Named explicitly; the runtime does not auto-select.
+      runtime: mlflow-lockfile-runtime
+      storageUri: pvc://mlflow-store/artifacts/1/5066e44b4e134aff91e703d7daaf6ca3/artifacts/model
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+      # MLflow's scoring server answers /health once the model is deserialised
+      # and ready to score, so readiness here means the same thing it means for
+      # the application tier: it can actually do the work.
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 3
+      # Deserialising the pipeline and importing scikit-learn takes appreciably
+      # longer than answering a request, and that is not a liveness failure.
+      startupProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        periodSeconds: 5
+        failureThreshold: 40

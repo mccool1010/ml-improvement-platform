@@ -1,0 +1,110 @@
+# MLflow tracking server.
+#
+# It runs the project's own image. That is deliberate: the server and every
+# client then hold the identical MLflow build from uv.lock, so there is no
+# version skew between what writes the registry and what reads it, and no second
+# image to pull or keep current.
+#
+# `--serve-artifacts` is the point of the whole exercise. With it, clients fetch
+# artifacts over HTTP from this server and run artifact URIs are recorded as
+# `mlflow-artifacts:/...`, which resolve relative to whatever server the client
+# is talking to. Without it they would be filesystem paths again, and a pod would
+# be back to needing a path that exists on somebody else's machine.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow
+  namespace: ml-platform
+  labels:
+    app.kubernetes.io/name: mlflow
+    app.kubernetes.io/component: tracking-server
+    app.kubernetes.io/part-of: ml-platform
+spec:
+  replicas: 1
+  # The volume is ReadWriteOnce and SQLite tolerates exactly one writer, so a
+  # rolling update that briefly ran two pods would fail to attach or corrupt the
+  # store. Recreate stops the old pod first.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mlflow
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mlflow
+        app.kubernetes.io/component: tracking-server
+        app.kubernetes.io/part-of: ml-platform
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        # The volume arrives owned by root; fsGroup hands it to the service
+        # account so the server can create its database without running as root.
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mlflow
+          image: ml-platform-api:m11
+          imagePullPolicy: IfNotPresent
+          command:
+            - mlflow
+            - server
+            - --host=0.0.0.0
+            - --port=5000
+            - --backend-store-uri=sqlite:////mlflow/mlflow.db
+            - --artifacts-destination=/mlflow/artifacts
+            - --serve-artifacts
+            # One worker, not the default four. Each worker imports the whole of
+            # MLflow, and four of them were killed for exceeding the memory
+            # limit before the server ever answered a probe. One writer is also
+            # all a SQLite backend on a ReadWriteOnce volume can have.
+            - --workers=1
+            # The host validation added in MLflow 3 defaults to localhost and
+            # private IP literals, which rejects a request whose Host header is
+            # a Service DNS name. Every in-cluster client sends exactly that.
+            - --allowed-hosts=mlflow,mlflow:5000,mlflow.ml-platform,mlflow.ml-platform:5000,mlflow.ml-platform.svc.cluster.local,mlflow.ml-platform.svc.cluster.local:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000
+          ports:
+            - name: http
+              containerPort: 5000
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          # The server runs migrations on first start, so it is given room to
+          # come up before liveness begins counting against it.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: store
+              mountPath: /mlflow
+      volumes:
+        - name: store
+          persistentVolumeClaim:
+            claimName: mlflow-store

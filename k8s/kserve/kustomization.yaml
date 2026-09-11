@@ -1,0 +1,20 @@
+# The model tier. Applied separately from k8s/base because it needs the KServe
+# CRDs to exist first:
+#
+#     kubectl apply -k k8s/base      # namespace, tracking server, application tier
+#     kubectl apply -k k8s/kserve    # the model tier
+#
+# See docs/kserve.md for the KServe install these depend on.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ml-platform
+
+resources:
+  - 30-servingruntime.yaml
+  - 31-inferenceservice.yaml
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: ml-platform

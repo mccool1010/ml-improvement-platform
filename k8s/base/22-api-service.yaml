@@ -1,0 +1,26 @@
+# Service discovery for the inference API.
+#
+# ClusterIP, not NodePort or LoadBalancer. Nothing outside the cluster needs to
+# reach this yet, and exposure is a decision to take deliberately rather than
+# inherit from a manifest. Locally, `kubectl port-forward` is the way in.
+#
+# A pod joins this Service's endpoints only while its readiness probe passes, so
+# the Service is also the thing that enforces "no traffic without a model".
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference-api
+  namespace: ml-platform
+  labels:
+    app.kubernetes.io/name: inference-api
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: ml-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: inference-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

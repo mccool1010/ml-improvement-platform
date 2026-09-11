@@ -17,8 +17,9 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from ml_platform.features.engineering import build_features
 from ml_platform.promotion.registry import resolve_production
+from ml_platform.serving.client import RemotePredictor, build_predictor
+from ml_platform.serving.scoring import score
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import pandas as pd
@@ -49,15 +50,26 @@ class LoadedModel:
     platform_run_id: str | None
     decision_threshold: float
     threshold_source: str
+    #: Set when the model tier is a KServe InferenceService. Then ``pipeline``
+    #: is ``None``: this process does not hold the model at all.
+    predictor: RemotePredictor | None = None
+
+    @property
+    def served_by(self) -> str:
+        """Which tier produced the score. Reported, so it is never a guess."""
+        return "kserve" if self.predictor is not None else "in-process"
 
     def predict(self, frame: pd.DataFrame) -> list[float]:
         """Score a frame of applications, returning default probabilities.
 
-        Features are built by the same code that built them for training, so the
-        served representation cannot drift from the trained one.
+        Either the KServe model tier scores it, or this process does. Both run
+        :func:`ml_platform.serving.scoring.score` -- the predictor runs it on the
+        other side of the wire -- so there is one implementation and the two
+        paths cannot answer differently.
         """
-        features = build_features(frame, self.feature_set)
-        return [float(p) for p in self.pipeline.predict_proba(features)[:, 1]]
+        if self.predictor is not None:
+            return self.predictor.predict(frame)
+        return score(self.pipeline, frame, self.feature_set)
 
 
 class ModelService:
@@ -77,6 +89,32 @@ class ModelService:
     @property
     def loaded(self) -> bool:
         return self._model is not None
+
+    def readiness(self) -> tuple[bool, str | None]:
+        """Whether this service can actually serve a prediction right now.
+
+        Two different questions, depending on which tier holds the model.
+
+        In process, it is the startup question and nothing else: the model was
+        loaded once, deliberately, so that a request never pays for a registry
+        lookup. Nothing can change between probes.
+
+        Against KServe, this process holds no model at all -- only the registry
+        metadata it resolved at startup, and a dependency. So readiness asks the
+        model tier now. A snapshot taken at startup would leave this service
+        reporting ready after the InferenceService had gone away, or reporting
+        unready forever because it happened to start first. Checking live is
+        what makes the two Deployments independent of their start order.
+        """
+        if self._model is None:
+            return False, self._error or "no production model is resolved"
+        predictor = self._model.predictor
+        if predictor is None:
+            return True, None
+        reachable, reason = predictor.ready()
+        if not reachable:
+            return False, f"the model tier is not ready: {reason}"
+        return True, None
 
     @property
     def error(self) -> str | None:
@@ -100,15 +138,23 @@ class ModelService:
                 LOGGER.warning(self._error)
                 return False
 
-            import mlflow.sklearn
-
-            uri = f"models:/{config.registered_model_name}@{config.production_alias}"
-            pipeline = mlflow.sklearn.load_model(uri)
             tags = self._version_tags(production)
+
+            # Which tier holds the model. The registry lookup above happens
+            # either way: the alias decides what production is, and this service
+            # reports the version and threshold whichever tier does the scoring.
+            predictor = build_predictor(config)
+            pipeline = None
+            if predictor is None:
+                import mlflow.sklearn
+
+                uri = f"models:/{config.registered_model_name}@{config.production_alias}"
+                pipeline = mlflow.sklearn.load_model(uri)
 
             threshold, source = _threshold_from(tags)
             self._model = LoadedModel(
                 pipeline=pipeline,
+                predictor=predictor,
                 name=production.name,
                 version=production.version,
                 alias=config.production_alias,
@@ -120,9 +166,10 @@ class ModelService:
             )
             self._error = None
             LOGGER.info(
-                "loaded %s v%s (feature set %s, threshold %.6f from %s)",
+                "resolved %s v%s served %s (feature set %s, threshold %.6f from %s)",
                 production.name,
                 production.version,
+                self._model.served_by,
                 self._model.feature_set,
                 threshold,
                 source,

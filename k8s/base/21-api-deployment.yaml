@@ -1,0 +1,112 @@
+# The inference API.
+#
+# The pod resolves its model exactly the way every other entry point does: the
+# `production` alias on the registered model, through
+# ml_platform.promotion.registry.resolve_production. Kubernetes changes where the
+# registry lives, not how production is decided. A pod is never given a model
+# directly, and never falls back to the newest run.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference-api
+  namespace: ml-platform
+  labels:
+    app.kubernetes.io/name: inference-api
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: ml-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: inference-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: inference-api
+        app.kubernetes.io/component: api
+        app.kubernetes.io/part-of: ml-platform
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: ml-platform-api:m11
+          # The image is built locally and never pushed, so a pull would fail.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: inference-api-config
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            # MLflow downloads the model artifact to a local cache before
+            # deserialising it, so the filesystem cannot be read-only. The
+            # writable paths are emptyDir volumes below rather than the image.
+            readOnlyRootFilesystem: true
+          resources:
+            # A scikit-learn pipeline held in memory, scoring small batches. The
+            # request is what one idle pod actually holds; the limit leaves room
+            # for the artifact download and a burst of concurrent requests
+            # without letting one pod starve the node.
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          # Startup is the model load: a registry lookup and an artifact
+          # download. It is slow and variable, and it is not a liveness
+          # question, so it gets its own probe and the other two only begin
+          # once it has passed.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          # Liveness asks only whether the process is serving. It deliberately
+          # does NOT ask /ready: a pod that holds no promoted model is working
+          # correctly and must not be restarted in a loop over it.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Readiness asks whether it can actually score. /ready answers 503
+          # when no model is loaded, which takes the pod out of the Service's
+          # endpoints and holds traffic back while leaving it running.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 2
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: home
+              mountPath: /home/appuser
+      volumes:
+        # Where MLflow stages the downloaded artifact, and where anything else
+        # transient goes. Empty on every restart, which is what makes the
+        # read-only image filesystem workable.
+        - name: tmp
+          emptyDir: {}
+        - name: home
+          emptyDir: {}

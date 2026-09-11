@@ -1,0 +1,102 @@
+# The runtime that actually scores the model.
+#
+# KServe ships a stock MLflow runtime, `kserve-mlserver`, built on
+# seldonio/mlserver:1.7.1. It is not used here, and the reason is in the artifact
+# itself. The registered model's requirements.txt pins:
+#
+#     mlflow==3.16.0   scikit-learn==1.9.0   cloudpickle==3.1.2   numpy==2.5.2
+#
+# The pipeline is cloudpickle-serialised, and unpickling a scikit-learn estimator
+# under a different scikit-learn version is explicitly unsupported. A runtime
+# image pinned to its own older versions cannot load this artifact and be trusted
+# to reproduce its predictions, and reproducing them exactly is the contract this
+# project is built on.
+#
+# So the runtime runs the project's own image, whose environment comes from the
+# same uv.lock that produced the artifact. This is the same reasoning that put
+# the MLflow tracking server on this image in M10: the thing that wrote the model
+# and the thing that reads it hold one dependency set, by construction.
+#
+# It runs the project's predictor rather than `mlflow models serve`, for a second
+# reason found by running it. The artifact was logged with the sklearn flavor's
+# default, so its python_function flavor records `predict_fn: predict` and
+# MLflow's scoring server returns hard labels -- `{"predictions": [0, 0]}`. This
+# project decides by comparing a probability to a review-capacity threshold, so a
+# label throws away the number the decision is made on. The predictor loads the
+# sklearn flavor and calls predict_proba, which is what every other serving path
+# in this project has always done.
+apiVersion: serving.kserve.io/v1alpha1
+kind: ServingRuntime
+metadata:
+  name: mlflow-lockfile-runtime
+  namespace: ml-platform
+  labels:
+    app.kubernetes.io/name: mlflow-lockfile-runtime
+    app.kubernetes.io/component: serving-runtime
+    app.kubernetes.io/part-of: ml-platform
+spec:
+  supportedModelFormats:
+    - name: mlflow
+      version: "3"
+      # Not auto-selected. An InferenceService must name this runtime
+      # explicitly, so a model never lands here by accident.
+      autoSelect: false
+  # KServe's V1 protocol: POST /v1/models/<name>:predict with an `instances`
+  # list. Not V2/Open Inference Protocol, whose tensor shape would flatten the
+  # named, mixed-type columns this model's features actually are.
+  protocolVersions:
+    - v1
+  containers:
+    - name: kserve-container
+      image: ml-platform-api:m11
+      imagePullPolicy: IfNotPresent
+      command:
+        - uvicorn
+        - ml_platform.serving.predictor:app
+      args:
+        - --host=0.0.0.0
+        - --port=8080
+        # One worker. The pipeline is held in memory per worker, and the model
+        # tier is sized for one replica at this milestone.
+        - --workers=1
+      ports:
+        - containerPort: 8080
+          name: http1
+          protocol: TCP
+      env:
+        # KServe mounts the artifact here.
+        - name: MODEL_DIR
+          value: /mnt/models
+        # Must match the InferenceService name: the V1 protocol addresses a named
+        # model and the predictor refuses a name it does not serve.
+        - name: MODEL_NAME
+          value: sba-loan-default
+        # From the registered version's `feature_set` tag. Serving a different
+        # representation than the model was trained on is the skew this project
+        # is built to prevent, so it is stated rather than assumed.
+        - name: MODEL_FEATURE_SET
+          value: engineered
+        # The determinism contract, as everywhere else this model runs.
+        - name: OMP_NUM_THREADS
+          value: "1"
+        - name: OPENBLAS_NUM_THREADS
+          value: "1"
+        - name: MKL_NUM_THREADS
+          value: "1"
+        - name: MLFLOW_DISABLE_AGENT_HINT
+          value: "1"
+      resources:
+        # The pipeline is 276 KB on disk; the footprint is the scikit-learn,
+        # pandas and MLflow import graph, not the model.
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]

@@ -1,0 +1,44 @@
+# The one thing the API cannot know for itself: where its tracking server is.
+#
+# Everything else the service needs is already in the image, in configs/, and is
+# the same in every environment. This is the single value that differs between a
+# laptop and a cluster, so this is the only thing that comes from Kubernetes.
+# A ConfigMap full of restated defaults would be a place for them to drift.
+#
+# There is no Secret alongside this, because there is no credential: the tracking
+# server is reachable only inside the namespace and has no authentication. When
+# one is introduced -- an object store's keys, or basic auth on the server -- it
+# belongs in a Secret, not here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inference-api-config
+  namespace: ml-platform
+  labels:
+    app.kubernetes.io/name: inference-api
+    app.kubernetes.io/part-of: ml-platform
+data:
+  # Read by ml_platform.config.Config.tracking_uri, which takes this over the
+  # backend_uri in configs/base.yaml. Both the registry lookup that resolves the
+  # `production` alias and the artifact download go through it.
+  MLFLOW_TRACKING_URI: http://mlflow:5000
+
+  # Bounds on the startup model load. The MLflow client retries a connection
+  # failure with exponential backoff, and that retry happens inside the API's
+  # startup lifespan -- so an unreachable tracking server left the pod hung in
+  # "Waiting for application startup", serving nothing at all, instead of
+  # starting and reporting itself unready. These make the attempt fail fast so
+  # the M7 contract holds: the service comes up, /health answers, and /ready
+  # says why it cannot serve.
+  MLFLOW_HTTP_REQUEST_MAX_RETRIES: "2"
+  MLFLOW_HTTP_REQUEST_TIMEOUT: "10"
+
+  # The KServe model tier. Its presence is what makes this Deployment the
+  # application tier rather than a server that holds the model: with it set the
+  # API validates, builds nothing, resolves the version from the registry and
+  # calls the InferenceService for the score. Unset -- locally, and in the plain
+  # container -- the API loads the model itself. ADR-002 is the decision.
+  #
+  # The address is the Service KServe creates for the InferenceService, resolved
+  # by cluster DNS. Nothing here names a pod or an address.
+  ML_PLATFORM_PREDICTOR_URL: http://sba-loan-default-predictor

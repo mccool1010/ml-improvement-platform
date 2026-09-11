@@ -821,6 +821,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "joblib" },
     { name = "mlflow" },
     { name = "numpy" },
@@ -836,7 +837,6 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "mypy" },
     { name = "pandas-stubs" },
     { name = "pytest" },
@@ -848,7 +848,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "joblib", specifier = ">=1.4" },
     { name = "mlflow", specifier = ">=3.16.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },

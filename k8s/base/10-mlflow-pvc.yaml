@@ -1,0 +1,27 @@
+# Storage for the tracking server: the SQLite backend and the artifact root, on
+# one volume.
+#
+# This is what replaces the host path. The M8 finding was that the local store
+# records an absolute host artifact URI in its database, which no pod can
+# resolve. Here the server owns a volume, records paths inside it, and serves
+# the artifacts over HTTP, so nothing outside the cluster is ever named.
+#
+# ReadWriteOnce is sufficient because exactly one process writes: the tracking
+# server. Clients reach artifacts through it, not through the filesystem. That
+# is the property that makes a single-node volume acceptable here and a shared
+# object store the right answer once there is more than one node.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-store
+  namespace: ml-platform
+  labels:
+    app.kubernetes.io/name: mlflow
+    app.kubernetes.io/component: tracking-server
+    app.kubernetes.io/part-of: ml-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi

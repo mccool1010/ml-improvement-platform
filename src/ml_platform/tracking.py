@@ -152,11 +152,19 @@ def build_tags(record: RunRecord, model_key: str) -> dict[str, str]:
 
 
 def _ensure_experiment(mlflow: Any, config: Config, name: str | None = None) -> None:
-    """Select the experiment, creating it with a project-anchored artifact store.
+    """Select the experiment, creating it with an appropriate artifact store.
 
-    ``set_experiment`` alone would let MLflow default the artifact location to a
-    directory relative to the working directory, which would break the M2 rule
-    that nothing depends on where a command was launched from.
+    Against a local store, the artifact location is set explicitly. ``set_experiment``
+    alone would let MLflow default it to a directory relative to the working
+    directory, which would break the M2 rule that nothing depends on where a
+    command was launched from.
+
+    Against a tracking *server*, no location is passed. The location is written
+    into the experiment record, so a path chosen by whichever client happened to
+    create the experiment would be recorded for every other client -- which is
+    precisely how an absolute Windows path came to be baked into the local store
+    and left the artifacts unreachable from a container. The server assigns its
+    own root and serves artifacts over HTTP instead.
     """
     experiment = name or config.experiment_name
     if mlflow.get_experiment_by_name(experiment) is None:

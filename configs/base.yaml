@@ -86,6 +86,19 @@ artifacts:
   model_dir: models
   benchmark_dir: artifacts/benchmarks
 
+serving:
+  # Where scoring happens. Null means the API loads the model into its own
+  # process, which is how the local development server and the plain container
+  # run. In Kubernetes the deployment sets ML_PLATFORM_PREDICTOR_URL to the
+  # KServe InferenceService, and the API becomes the application tier in front
+  # of it: validation, thresholds and version metadata, but not the model.
+  # ADR-002 is the decision; there is only ever one path serving production.
+  predictor_url: null
+  # Must match the InferenceService name. KServe's V1 protocol addresses a named
+  # model and the predictor refuses a name it does not serve.
+  predictor_model_name: sba-loan-default
+  predictor_timeout_seconds: 10.0
+
 promotion:
   # Promotion is decided on the validation split. The test split is held-out
   # evidence; a threshold chosen against it, or a promotion justified by it,

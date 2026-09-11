@@ -1,0 +1,24 @@
+# Service discovery for the tracking server.
+#
+# This name is the entire reason the API pod needs no host-specific
+# configuration: `http://mlflow:5000` resolves inside the namespace through
+# cluster DNS, and the ConfigMap hands that name to the API. Nothing anywhere
+# names a machine, an IP or a path.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+  namespace: ml-platform
+  labels:
+    app.kubernetes.io/name: mlflow
+    app.kubernetes.io/component: tracking-server
+    app.kubernetes.io/part-of: ml-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mlflow
+  ports:
+    - name: http
+      port: 5000
+      targetPort: http
+      protocol: TCP

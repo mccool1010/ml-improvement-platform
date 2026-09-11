@@ -178,11 +178,15 @@ jobs:
           echo "$health" | grep -q '"status":"ok"'
 
           echo "--- /ready"
-          ready="$(curl -fsS http://localhost:8000/ready)"
-          echo "$ready"
+          # No -f here: unready deliberately answers 503, so that a Kubernetes
+          # readiness probe withholds traffic. Both the code and the body are
+          # asserted, because 503 alone could also mean the app had crashed.
+          code="$(curl -sS -o /tmp/ready.json -w '%{http_code}' http://localhost:8000/ready)"
+          cat /tmp/ready.json; echo
+          test "$code" = "503"
           # Unready is the correct answer with no registry mounted. A "ready"
           # here would mean the image had a model baked into it.
-          echo "$ready" | grep -q '"model_loaded":false'
+          grep -q '"model_loaded":false' /tmp/ready.json
 
           echo "--- runtime user"
           docker exec mlapi-ci id | tee /dev/stderr | grep -q 'uid=10001'
