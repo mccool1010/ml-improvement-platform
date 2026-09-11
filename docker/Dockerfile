@@ -60,8 +60,17 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 # Writable mount points for the MLflow store. Owned by appuser so a bind mount
 # or volume works without running as root.
+#
+# /app itself must be writable too. The tracking backend is a SQLite file at
+# /app/mlflow.db, and SQLite creates its database and journal files in the
+# directory. Left root-owned the store cannot be opened, and MLflow retries
+# that failure with exponential backoff *inside the startup lifespan*, so a
+# container with no store mounted never serves /health at all instead of
+# starting and reporting itself unready. Found by running the image with no
+# mounts, which is exactly what CI does.
 RUN mkdir -p /app/mlartifacts /app/artifacts/reports /app/artifacts/benchmarks \
-    && chown -R appuser:appuser /app/mlartifacts /app/artifacts
+    && chown -R appuser:appuser /app/mlartifacts /app/artifacts \
+    && chown appuser:appuser /app
 
 USER appuser
 

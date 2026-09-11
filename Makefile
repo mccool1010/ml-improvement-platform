@@ -36,16 +36,16 @@ test:
 	pytest
 
 lint:
-	ruff check src tests scripts
+	ruff check .
 
 format:
-	ruff format src tests scripts
+	ruff format .
 
 typecheck:
 	mypy
 
 check: lint typecheck test
-	ruff format --check src tests scripts
+	ruff format --check .
 
 # Full gate: static checks, tests, and a verified reproduction of the M1 metrics.
 verify: check reproduce

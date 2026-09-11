@@ -233,11 +233,21 @@ model name, version and both run identities, so a score is traceable.
 docker build -f docker/Dockerfile -t ml-platform-api:latest .
 
 # The MLflow store is mounted, not baked in, so promoting a model needs no rebuild.
-docker run --rm -p 8000:8000   -v "$PWD/mlflow.db:/app/mlflow.db"   -v "$PWD/mlartifacts:/app/mlartifacts"   ml-platform-api:latest
+# The artifact mount target is the absolute path MLflow recorded in the database,
+# not a tidy one; see the note below. `--mount` is required because `-v` cannot
+# parse a target containing a colon.
+docker run --rm -p 8000:8000 \
+  --mount "type=bind,source=$PWD/mlflow.db,target=/app/mlflow.db" \
+  --mount "type=bind,source=$PWD/mlartifacts,target=/$PWD/mlartifacts" \
+  ml-platform-api:latest
 
 curl -fsS localhost:8000/health
 curl -fsS localhost:8000/ready
 ```
+
+With no store mounted at all the container still starts and serves `/health`; it
+reports `/ready` as `not_ready` with the reason. That is the intended behaviour,
+and it is what CI asserts.
 
 Two stages. The builder resolves dependencies with `uv sync --frozen` from the
 committed lockfile, so the image gets the exact versions the reproducibility
@@ -255,14 +265,37 @@ The `HEALTHCHECK` uses `/health`, not `/ready`. A container holding no promoted
 model is alive and should not be restarted; withholding traffic is what `/ready`
 is for.
 
+One real limitation, found by running this. MLflow records each experiment's
+artifact root in the tracking database as an absolute host URI, here
+`file:///C:/mlops/mlartifacts`. That is data, not configuration, so a container
+that mounts the artifacts anywhere else resolves them to nothing and reports
+`No such artifact: ''`. Mounting at the recorded path is a workaround for one
+machine. The real fix is a tracking server with a shared artifact store, which
+belongs to a later milestone and is not hacked around here.
+
 Development commands:
 
 ```bash
-pytest                      # 357 tests; add -m "not slow" to skip full-dataset runs
-ruff check src tests scripts
-ruff format src tests scripts
+pytest                      # add -m "not slow" to skip full-dataset runs
+ruff check .
+ruff format --check .
 mypy                        # strict mode
 ```
+
+## Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push to
+`main` and every pull request against it, in four independent jobs: static checks
+(`ruff`, `ruff format --check`, `mypy --strict`), the test suite, a real
+reproduction of the locked reference metrics on the genuine register, and a build
+and smoke-test of the container image. Dependencies install from `uv.lock` with
+`--frozen`, the runner image and `uv` version are pinned, and the workflow holds
+no secret and pushes nothing.
+
+CI verifies the container starts and correctly reports itself **not ready** with
+no registry mounted; it cannot yet load a real promoted model, because the local
+MLflow store records absolute host paths. The reasoning, the local equivalents of
+every CI command, and that limitation in full are in [docs/ci.md](docs/ci.md).
 
 ## Design decisions worth knowing
 
@@ -301,6 +334,7 @@ reproducibility check compares that hash exactly.
 | [docs/model_lifecycle.md](docs/model_lifecycle.md) | The loop, and the three clocks |
 | [docs/reproducibility.md](docs/reproducibility.md) | What is pinned, the tolerances, and remaining nondeterminism |
 | [docs/testing.md](docs/testing.md) | The test tiers and the ML assumptions each one protects |
+| [docs/ci.md](docs/ci.md) | What CI checks, how to run those checks locally, and what it cannot test yet |
 | [ADR-001](docs/decisions/ADR-001-model-choice.md) | Dataset, label and model family |
 | [ADR-002](docs/decisions/ADR-002-serving.md) | Why KServe is the only serving path |
 | [ADR-003](docs/decisions/ADR-003-promotion-strategy.md) | Promotion gates, drift, rollback |
@@ -312,8 +346,14 @@ reproducibility check compares that hash exactly.
 | M0 architecture and problem selection | Complete |
 | M1 ML baseline | Complete |
 | M2 reproducible training | Complete, 48 of 48 metrics reproduce bit-exactly |
-| M3 automated testing | Complete, 357 tests across unit, integration and regression |
-| M4 to M16 | Planned |
+| M3 automated testing | Complete, unit, integration and regression tiers |
+| M4 experiment tracking | Complete, MLflow records runs; the JSON records stay authoritative |
+| M5 model optimization | Complete, Optuna study with nested runs |
+| M6 quality gates and registry | Complete, gates decide on validation, never on the test split |
+| M7 inference API | Complete, FastAPI resolving the `production` registry alias |
+| M8 containerisation | Complete, two-stage image, non-root, no data or store baked in |
+| M9 CI/CD | Complete, GitHub Actions: static checks, tests, reproduction, image build |
+| M10 to M16 | Planned |
 
 Built milestone by milestone, each verified by running it.
 

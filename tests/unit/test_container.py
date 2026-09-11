@@ -75,6 +75,14 @@ class TestRuntimeSafety:
         """A USER after CMD would leave the process running as root."""
         assert dockerfile.index("USER appuser") < dockerfile.index("CMD [")
 
+    def test_the_working_directory_is_writable_by_the_service_user(self, dockerfile: str) -> None:
+        """The SQLite tracking backend lives at /app/mlflow.db, and SQLite writes
+        its journal beside the database. With /app left root-owned, MLflow cannot
+        open the store and retries with exponential backoff inside the startup
+        lifespan, so a container with no store mounted never serves /health at
+        all rather than starting and reporting itself unready."""
+        assert re.search(r"chown\s+appuser:appuser\s+/app$", dockerfile, re.MULTILINE)
+
     def test_native_thread_pools_are_pinned(self, dockerfile: str) -> None:
         """uvicorn imports the app directly and never passes through the CLI
         bootstrap, so the determinism contract has to be set in the environment."""

@@ -1,0 +1,196 @@
+# Continuous integration.
+#
+# Four independent jobs, so a failure names itself: static checks, the test
+# suite, a real reproduction of the locked reference metrics, and the M8 image
+# build. Nothing here deploys anything and nothing here needs a secret.
+#
+# Every command has a documented local equivalent in docs/ci.md. If a check can
+# only be run by pushing, it is not a check the project can act on.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Read-only. The workflow publishes nothing, so it is given no write scope and
+# no registry credentials.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # uv refuses to silently re-resolve; a stale lockfile fails the run instead of
+  # quietly installing something the project never recorded.
+  UV_FROZEN: "1"
+  # The determinism contract, in the environment. The CLI pins these itself, but
+  # pytest imports numpy without passing through the CLI bootstrap.
+  OMP_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+  VECLIB_MAXIMUM_THREADS: "1"
+
+jobs:
+  static:
+    name: Lint, format and types
+    # Pinned rather than ubuntu-latest: a runner image that changes underneath
+    # the project would be indistinguishable from a regression.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.10"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies from the lockfile
+        run: uv sync --frozen --extra dev
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: mypy (strict)
+        run: uv run mypy
+
+  tests:
+    name: Test suite
+    runs-on: ubuntu-24.04
+    steps:
+      # The packaging regression tests ask git what it tracks, so the checkout
+      # has to be a real repository, not an exported tree.
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.10"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies from the lockfile
+        run: uv sync --frozen --extra dev
+
+      # Tests marked `slow` need the 179 MB register and skip without it. They
+      # are covered by the reproducibility job below, which trains on the real
+      # data; running them here as well would download it twice.
+      - name: pytest
+        run: uv run pytest
+
+  reproducibility:
+    name: Reproduce the locked reference
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.10"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies from the lockfile
+        run: uv sync --frozen --extra dev
+
+      # Keyed on the recorded checksum, so the cache can only ever hold the exact
+      # bytes the reference was produced from. The download step verifies the
+      # checksum again regardless of whether the cache hit.
+      - name: Resolve the recorded dataset checksum
+        id: dataset
+        run: |
+          sha="$(grep -m1 -E '^\s*sha256:' configs/base.yaml | awk '{print $2}')"
+          test -n "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the register
+        uses: actions/cache@v4
+        with:
+          path: data/raw/SBAnational.csv
+          key: sba-register-${{ steps.dataset.outputs.sha }}
+
+      - name: Download and checksum-verify the register
+        run: uv run python -m ml_platform download
+
+      # `portable` is the tolerance profile configs/reference.yaml defines for a
+      # rerun on different hardware or a different operating system; the runners
+      # are Linux and the reference was locked on Windows. Splits, row counts and
+      # the row-order fingerprint are still compared exactly under either
+      # profile, so a labelling or ordering change fails here regardless.
+      - name: Reproduce the M1 reference metrics
+        run: uv run python -m ml_platform reproduce --profile portable
+
+  container:
+    name: Build and smoke-test the image
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the inference image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          # Loaded into the local daemon so the smoke test can run it. Nothing is
+          # pushed: there is no registry and no credential in this workflow.
+          load: true
+          push: false
+          tags: ml-platform-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # What can honestly be tested here. The image holds no model: the MLflow
+      # store is mounted at run time, and this repository's store is a local
+      # SQLite file whose artifact URIs are absolute host paths. So CI verifies
+      # the container starts, serves liveness, and correctly reports itself
+      # NOT ready with a reason rather than pretending to serve. Loading a real
+      # promoted model in CI needs a tracking server, which is a later milestone.
+      - name: Smoke-test the container
+        run: |
+          set -euo pipefail
+          docker run -d --name mlapi-ci -p 8000:8000 ml-platform-api:ci
+
+          for _ in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+
+          echo "--- /health"
+          health="$(curl -fsS http://localhost:8000/health)"
+          echo "$health"
+          echo "$health" | grep -q '"status":"ok"'
+
+          echo "--- /ready"
+          ready="$(curl -fsS http://localhost:8000/ready)"
+          echo "$ready"
+          # Unready is the correct answer with no registry mounted. A "ready"
+          # here would mean the image had a model baked into it.
+          echo "$ready" | grep -q '"model_loaded":false'
+
+          echo "--- runtime user"
+          docker exec mlapi-ci id | tee /dev/stderr | grep -q 'uid=10001'
+
+      - name: Container logs
+        if: always()
+        run: docker logs mlapi-ci || true
+
+      - name: Remove the container
+        if: always()
+        run: docker rm -f mlapi-ci || true
