@@ -7,12 +7,21 @@ The ML task is a vehicle. The engineering is the point: reproducible training,
 automated evaluation, quality gates that can reject a candidate, safe promotion,
 drift detection, delayed-label evaluation, canary rollout and rollback.
 
+```mermaid
+flowchart LR
+    A["train"] --> B["evaluate"] --> C["compare"] --> D{"7 quality gates"}
+    D -->|"any blocking failure"| R["REJECT<br/>incumbent untouched"]
+    D -->|"all pass"| E["promote<br/>move the alias"] --> F["deploy · serve"]
+    F --> G["monitor<br/>errors · latency"]
+    F --> H["measure input drift"]
+    H -->|"PSI over threshold"| I["retrain"] --> C
+    G -->|"operational failure"| J["roll back"] --> F
+    R --> F
 ```
-experiment -> evaluate -> compare -> promote or reject -> deploy
-     ^                                                      |
-     |                                                      v
-  retrain <- detect degradation <- monitor <----------------+
-```
+
+Every path into production passes through the same gate. Nothing reaches the
+production alias without it — not a first candidate, not a retrained one, not a
+canary that behaved well.
 
 ## The problem
 
@@ -297,6 +306,10 @@ no registry mounted; it cannot yet load a real promoted model, because the local
 MLflow store records absolute host paths. The reasoning, the local equivalents of
 every CI command, and that limitation in full are in [docs/ci.md](docs/ci.md).
 
+**The workflow has never executed.** This repository has no remote, so CI is
+defined and unexercised; every number quoted in this README was produced locally.
+The four jobs run locally with the commands in [docs/ci.md](docs/ci.md).
+
 ## Kubernetes
 
 ```bash
@@ -444,6 +457,71 @@ model scoring the same input identically. The production alias was v1 throughout
 See [docs/failure.md](docs/failure.md), which also records two defects the
 harness found in *itself*.
 
+## Dashboard
+
+```bash
+cd dashboard && npm install && npm run build     # once
+uv run python -m ml_platform serve               # http://127.0.0.1:8000/dashboard/
+```
+
+Six views over the platform: overview, models and promotion, drift and
+retraining, canary and rollback, reliability, observability. The FastAPI app
+mounts `dashboard/dist` at `/dashboard` when a build exists, so there is one
+serving surface and no second process. Without a build, nothing is mounted and
+the API is exactly what M7 shipped — no Node toolchain is needed to run or test
+the platform.
+
+It reads from ten read-only `/platform/*` endpoints that aggregate what the
+systems already own: MLflow for lineage and the registry, the running service for
+what is actually loaded, Prometheus for traffic, the failure harness for its own
+scenario catalogue. The browser never talks to any of them directly.
+
+**There are no control operations.** Promotion, retraining, canary decisions and
+failure injection all have CLIs that carry the safety checks; putting a button in
+front of them would mean duplicating those checks or bypassing them.
+
+**Absence is shown as absence.** Every section reports whether it is available
+and, when not, why — with the command that would produce the missing data.
+Formatters render an em dash, never a zero, for a value that was not measured: a
+latency quantile over an empty window is "no traffic", not "instant responses".
+Each section loads independently, because MLflow being down must not blank the
+panel reporting that MLflow is down.
+
+It does not try to replace Grafana. Six numbers and a link.
+
+## Demo path
+
+The honest ten-minute version, laptop only, no cluster required:
+
+```bash
+uv sync --frozen --extra dev
+uv run python -m ml_platform download          # ~179 MB, checksum-verified
+uv run python -m ml_platform validate          # schemas + split composition
+
+uv run python -m ml_platform train --model baseline
+uv run python -m ml_platform train --model candidate
+uv run python -m ml_platform promote           # 7 gates; exit 1 if rejected
+
+uv run python -m ml_platform drift --scenario lending_shift   # exit 2 = retrain
+uv run python -m ml_platform retrain           # candidate -> the same gates
+
+cd dashboard && npm install && npm run build && cd ..
+uv run python -m ml_platform serve             # /dashboard/
+```
+
+The interesting moment is `retrain`. On this data it produces a model that is
+genuinely better — validation average precision 0.734392 against production's
+0.732031 — and the gates reject it anyway, because +0.0024 is inside the noise
+band `min_improvement` exists to filter. Production is untouched and nothing is
+registered. That is the entire thesis of the project in one command.
+
+For the cluster, KServe, observability, canary and failure scenarios, follow
+[docs/kubernetes.md](docs/kubernetes.md) then [docs/failure.md](docs/failure.md).
+Those need Docker Desktop with Kubernetes enabled.
+
+Recorded results for every step above, with the caveats, are in
+[docs/evidence.md](docs/evidence.md).
+
 ## Design decisions worth knowing
 
 **The label is a fixed 60-month horizon, not "did it eventually default".** The
@@ -458,9 +536,11 @@ target partly measures whether the loan even lasted long enough to default, and
 **Drift and performance degradation are separate signals on separate clocks.**
 Input drift is immediate and may trigger retraining, but may never on its own
 reject a model. Realised performance takes years and drives the improvement record.
-Canary rollback uses only operational signals: error rate, latency, timeouts,
-prediction distribution shift and serving health. Never accuracy, because accuracy
-does not arrive in time.
+Canary rollback uses only operational signals: candidate health, HTTP error rate,
+upstream failure rate and latency p95, each compared against both an absolute
+ceiling and the incumbent. Never accuracy, because accuracy does not arrive in
+time. (M0 also planned a prediction-distribution-shift signal; it was not built,
+and is listed among the limitations rather than implied here.)
 
 **KServe is the canonical serving path.** FastAPI is the application layer in front
 of it, not a second way to serve the same model.
@@ -488,6 +568,7 @@ reproducibility check compares that hash exactly.
 | [docs/drift.md](docs/drift.md) | Drift methodology, the controlled scenario, and which labels retraining may use |
 | [docs/canary.md](docs/canary.md) | Traffic splitting, the rollback signals, and why the alias moves last |
 | [docs/failure.md](docs/failure.md) | The six failure scenarios, the invariants they prove, and the blast radius of each |
+| [docs/evidence.md](docs/evidence.md) | Every claim in this repository with the observation behind it, and the limitations |
 | [ADR-001](docs/decisions/ADR-001-model-choice.md) | Dataset, label and model family |
 | [ADR-002](docs/decisions/ADR-002-serving.md) | Why KServe is the only serving path |
 | [ADR-003](docs/decisions/ADR-003-promotion-strategy.md) | Promotion gates, drift, rollback |
@@ -512,9 +593,11 @@ reproducibility check compares that hash exactly.
 | M13 drift and retraining | Complete, drift triggers retraining; the M6 gates still decide |
 | M14 canary and rollback | Complete, app-tier traffic split; the alias moves only after the canary passes |
 | M15 failure engineering | Complete, six scenarios; five break real components |
-| M16 | Planned |
+| M16 portfolio and dashboard | Complete, read-only `/platform` API and a six-view operator dashboard |
 
-Built milestone by milestone, each verified by running it.
+Built milestone by milestone, each verified by running it. What is *not* done is
+recorded just as carefully: see the limitations in
+[docs/evidence.md](docs/evidence.md#9-limitations).
 
 ## Licence
 
