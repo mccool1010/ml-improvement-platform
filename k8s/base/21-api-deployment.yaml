@@ -45,7 +45,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: ml-platform-api:m12
+          image: ml-platform-api:m14
           # The image is built locally and never pushed, so a pull would fail.
           imagePullPolicy: IfNotPresent
           ports:

@@ -114,6 +114,86 @@ MODEL_INFO = Gauge(
     ["service", "model_name", "version", "alias", "served_by"],
 )
 
+# --- canary (M14) ----------------------------------------------------------
+#
+# Separate series rather than a `tier` label on the metrics above. Adding a label
+# to an existing metric changes every series it produces, which would break the
+# M12 dashboard queries and the alerts written against them. These are additive:
+# nothing in M12 sees any difference.
+#
+# `tier` takes exactly two values, production and canary.
+
+CANARY_REQUESTS = Counter(
+    "ml_platform_canary_requests_total",
+    "Requests routed to each tier while a canary is running.",
+    ["tier"],
+)
+
+CANARY_REQUEST_ERRORS = Counter(
+    "ml_platform_canary_request_errors_total",
+    "Requests to each tier that ended in a 4xx or 5xx.",
+    ["tier"],
+)
+
+CANARY_UPSTREAM_FAILURES = Counter(
+    "ml_platform_canary_upstream_failures_total",
+    "Timeouts and unreachable model tiers, which a status-code count hides.",
+    ["tier"],
+)
+
+CANARY_REQUEST_DURATION = Histogram(
+    "ml_platform_canary_request_duration_seconds",
+    "Time to score a request, by the tier that served it.",
+    ["tier"],
+    buckets=LATENCY_BUCKETS,
+)
+
+CANARY_TIER_HEALTHY = Gauge(
+    "ml_platform_canary_tier_healthy",
+    "1 when the tier reports itself able to serve, 0 otherwise.",
+    ["tier"],
+)
+
+CANARY_TRAFFIC_PERCENT = Gauge(
+    "ml_platform_canary_traffic_percent",
+    "Share of traffic currently allocated to the canary. 0 when none is running.",
+)
+
+
+def observe_canary_request(
+    tier: str,
+    *,
+    duration_seconds: float,
+    failed: bool = False,
+    upstream_failure: bool = False,
+) -> None:
+    """Record one request against the tier that served it."""
+    try:
+        CANARY_REQUESTS.labels(tier).inc()
+        CANARY_REQUEST_DURATION.labels(tier).observe(duration_seconds)
+        if failed:
+            CANARY_REQUEST_ERRORS.labels(tier).inc()
+        if upstream_failure:
+            CANARY_UPSTREAM_FAILURES.labels(tier).inc()
+    except Exception:  # pragma: no cover - telemetry must never break a request
+        LOGGER.debug("failed to record canary metrics", exc_info=True)
+
+
+def set_canary_tier_healthy(tier: str, healthy: bool) -> None:
+    try:
+        CANARY_TIER_HEALTHY.labels(tier).set(1 if healthy else 0)
+    except Exception:  # pragma: no cover
+        LOGGER.debug("failed to set the canary health gauge", exc_info=True)
+
+
+def set_canary_traffic(percent: float) -> None:
+    """Publish the current allocation, so a dashboard shows a rollback landing."""
+    try:
+        CANARY_TRAFFIC_PERCENT.set(percent)
+    except Exception:  # pragma: no cover
+        LOGGER.debug("failed to set the canary traffic gauge", exc_info=True)
+
+
 #: Outcomes for the model tier. A fixed vocabulary, so the label stays bounded
 #: and a dashboard can name each case.
 OUTCOME_SUCCESS = "success"

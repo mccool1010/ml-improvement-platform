@@ -34,6 +34,11 @@ ENV_PREDICTOR_URL = "ML_PLATFORM_PREDICTOR_URL"
 #: OTLP trace collector. OpenTelemetry's own standard variable name.
 ENV_OTLP_ENDPOINT = "OTEL_EXPORTER_OTLP_ENDPOINT"
 
+#: The canary model tier, and its share of traffic. Both come from the
+#: deployment so every API replica agrees on them by construction.
+ENV_CANARY_URL = "ML_PLATFORM_CANARY_URL"
+ENV_CANARY_TRAFFIC = "ML_PLATFORM_CANARY_TRAFFIC_PERCENT"
+
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Recursively merge ``override`` into ``base`` without mutating either."""
@@ -225,6 +230,75 @@ class Config:
     @property
     def _observability(self) -> dict[str, Any]:
         return dict(self.raw.get("observability") or {})
+
+    # --- canary (M14) ------------------------------------------------------
+    @property
+    def _canary(self) -> dict[str, Any]:
+        return dict(self.raw.get("canary") or {})
+
+    @property
+    def canary_alias(self) -> str:
+        """Registry alias a candidate holds *while* it is being canaried.
+
+        Separate from the production alias on purpose: a candidate under test
+        must be identifiable and loadable without being production. Configuring
+        them to the same string is refused here rather than discovered later:
+        it would make starting a canary move production immediately, which is
+        the one thing the whole arrangement exists to prevent.
+        """
+        alias = str(self._canary.get("alias", "canary"))
+        if alias == self.production_alias:
+            from ml_platform.serving.canary import CanaryError
+
+            raise CanaryError(
+                f"the canary alias and the production alias are both {alias!r}. "
+                "Starting a canary would move production immediately, before any "
+                "traffic had reached the candidate."
+            )
+        return alias
+
+    @property
+    def canary_model_name(self) -> str:
+        """InferenceService name for the canary, in the predictor's V1 paths."""
+        return str(self._canary.get("model_name", "sba-loan-default-canary"))
+
+    @property
+    def canary_predictor_url(self) -> str | None:
+        configured = os.environ.get(ENV_CANARY_URL) or self._canary.get("predictor_url")
+        return str(configured) if configured else None
+
+    @property
+    def canary_traffic_percent(self) -> float:
+        """Share of traffic the canary receives, set by the deployment.
+
+        Validated here as well as in the router, because a bad value in a
+        ConfigMap should fail the pod at startup rather than after it has begun
+        sending every request to an unproven model.
+        """
+        configured = os.environ.get(ENV_CANARY_TRAFFIC)
+        percent = (
+            float(configured)
+            if configured is not None
+            else float(self._canary.get("traffic_percent", 0.0))
+        )
+        from ml_platform.serving.canary import _validate_traffic
+
+        _validate_traffic(percent)
+        return percent
+
+    @property
+    def canary_enabled(self) -> bool:
+        """A canary runs only when it has somewhere to send traffic."""
+        return bool(self.canary_predictor_url) and self.canary_traffic_percent > 0.0
+
+    @property
+    def canary_observation_seconds(self) -> int:
+        return int(self._canary.get("observation_seconds", 300))
+
+    @property
+    def canary_thresholds(self) -> dict[str, Any]:
+        """Operational limits a canary must clear. Never accuracy."""
+        return dict(self._canary.get("thresholds") or {})
 
     # --- drift and retraining (M13) ---------------------------------------
     @property

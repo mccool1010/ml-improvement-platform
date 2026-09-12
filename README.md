@@ -399,6 +399,29 @@ Everything carries a `drift_event_id`, so a promotion can be traced back to the
 check that caused it. See [docs/drift.md](docs/drift.md), which also states
 exactly which labels retraining is allowed to use and why.
 
+## Canary and rollback
+
+A gated candidate is registered under a **canary** alias, not the production one,
+and the application tier routes a configured share of traffic to it. Only after
+the canary passes does the production alias move.
+
+KServe runs in RawDeployment mode, which has no traffic-splitting primitive, so
+the split happens in the tier that already fronts the model. Routing is
+deterministic and sticky -- a SHA-256 of the routing key into 10,000 buckets --
+so the same application always reaches the same tier and a test can assert an
+exact split. No service mesh was introduced.
+
+Rollback signals are operational only: error rate, latency, upstream timeouts and
+serving health, each compared against both an absolute ceiling and the incumbent.
+Accuracy is deliberately not among them, and a test asserts it. A failing canary
+never falls back to production, because that would make the error rate the
+decision rests on read as zero.
+
+Demonstrated end to end against a real MLflow registry: a healthy candidate
+passing all seven checks and moving production to v2; an unreachable candidate
+producing 92 real 503s and leaving production at v1; and a healthy tier with a
+19.6% error rate also leaving production at v1. See [docs/canary.md](docs/canary.md).
+
 ## Design decisions worth knowing
 
 **The label is a fixed 60-month horizon, not "did it eventually default".** The
@@ -441,6 +464,7 @@ reproducibility check compares that hash exactly.
 | [docs/kserve.md](docs/kserve.md) | The two serving tiers, the runtime choice, and the KServe install |
 | [docs/observability.md](docs/observability.md) | Metrics, the dashboard, tracing, and what is deliberately not measured |
 | [docs/drift.md](docs/drift.md) | Drift methodology, the controlled scenario, and which labels retraining may use |
+| [docs/canary.md](docs/canary.md) | Traffic splitting, the rollback signals, and why the alias moves last |
 | [ADR-001](docs/decisions/ADR-001-model-choice.md) | Dataset, label and model family |
 | [ADR-002](docs/decisions/ADR-002-serving.md) | Why KServe is the only serving path |
 | [ADR-003](docs/decisions/ADR-003-promotion-strategy.md) | Promotion gates, drift, rollback |
@@ -463,7 +487,8 @@ reproducibility check compares that hash exactly.
 | M11 KServe serving | Complete, KServe owns the model tier; FastAPI is the application tier |
 | M12 observability | Complete, Prometheus, Grafana, OpenTelemetry and Jaeger across both tiers |
 | M13 drift and retraining | Complete, drift triggers retraining; the M6 gates still decide |
-| M14 to M16 | Planned |
+| M14 canary and rollback | Complete, app-tier traffic split; the alias moves only after the canary passes |
+| M15 to M16 | Planned |
 
 Built milestone by milestone, each verified by running it.
 

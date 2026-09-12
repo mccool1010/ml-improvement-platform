@@ -15,6 +15,7 @@ Everything heavy is imported inside the command functions, after pinning.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 
@@ -251,6 +252,83 @@ def command_promote(args: argparse.Namespace) -> int:
     return 0 if report.promote else 1
 
 
+def command_canary(args: argparse.Namespace) -> int:
+    """Evaluate a running canary, then complete it or roll it back.
+
+    Traffic allocation itself is deployment configuration -- every API replica
+    reads it from the same place -- so this command does not dial traffic. It
+    reads the evidence and acts on the registry.
+    """
+    config = _bootstrap(args.environment)
+    from ml_platform.monitoring.signals import PrometheusSignals
+    from ml_platform.pipelines import canary_pipeline
+    from ml_platform.promotion.registry import resolve_production
+    from ml_platform.serving.canary import CanaryRouter
+    from ml_platform.serving.traffic import KubernetesTrafficController
+
+    # The router built below lives in this process and exits with it. The
+    # controller is what makes a traffic change reach the replicas actually
+    # serving requests; without it a rollback here would change nothing.
+    controller = (
+        None
+        if args.no_apply
+        else KubernetesTrafficController(
+            namespace=args.namespace,
+            configmap=args.configmap,
+            deployment=args.deployment,
+        )
+    )
+
+    production = resolve_production(config)
+    router = CanaryRouter()
+    router.start(
+        traffic_percent=config.canary_traffic_percent,
+        candidate_url=str(config.canary_predictor_url or "http://canary"),
+        candidate_version=args.candidate_version,
+        incumbent_version=production.version if production else None,
+    )
+
+    if args.action == "status":
+        print(json.dumps(router.state.describe(), indent=2))
+        print(f"production      v{production.version if production else 'none'}")
+        return 0
+
+    signals = PrometheusSignals(args.prometheus)
+    event_id = args.event_id or canary_pipeline.new_canary_event_id()
+    decision = canary_pipeline.evaluate(
+        config, signals, canary_event_id=event_id, router=router, window_seconds=args.window
+    )
+
+    print()
+    for check in decision.checks:
+        print(f"  {check.describe()}")
+    print()
+    print(decision.summary())
+
+    if args.action == "evaluate":
+        outcome = canary_pipeline.CanaryOutcome(
+            canary_event_id=event_id,
+            decision=decision,
+            alias_moved=False,
+            production_version=production.version if production else None,
+            notes=["evaluation only; no registry change"],
+        )
+    elif args.action == "rollback":
+        outcome = canary_pipeline.rollback(config, router, decision, controller=controller)
+    else:
+        outcome = canary_pipeline.decide(config, router, decision, controller=controller)
+
+    canary_pipeline.write_report(config, outcome)
+    canary_pipeline.log_to_mlflow(config, outcome)
+    print()
+    for note in outcome.notes:
+        print(f"  {note}")
+    print(outcome.summary())
+    if controller is None and args.action in {"rollback", "decide"}:
+        print("  NOTE: --no-apply was given, so live traffic was NOT changed")
+    return 0 if not decision.should_rollback else 1
+
+
 def command_serve(args: argparse.Namespace) -> int:
     """Serve the promoted production model over HTTP."""
     _bootstrap(args.environment)
@@ -327,6 +405,33 @@ def build_parser() -> argparse.ArgumentParser:
     retrain.add_argument("--no-register", action="store_true", help="evaluate gates only")
     retrain.add_argument("--nrows", type=int, default=None, help="read only N raw rows")
     retrain.set_defaults(handler=command_retrain)
+
+    canary = subparsers.add_parser(
+        "canary", help="evaluate a running canary and complete or roll it back"
+    )
+    canary.add_argument(
+        "--action",
+        default="evaluate",
+        choices=["status", "evaluate", "decide", "rollback"],
+        help="evaluate reports only; decide acts on the verdict; rollback forces a return",
+    )
+    canary.add_argument(
+        "--prometheus",
+        default="http://localhost:9090",
+        help="where the M12 Prometheus is reachable",
+    )
+    canary.add_argument("--window", type=int, default=None, help="observation window in seconds")
+    canary.add_argument("--candidate-version", default=None)
+    canary.add_argument("--event-id", default=None)
+    canary.add_argument("--namespace", default="ml-platform")
+    canary.add_argument("--configmap", default="inference-api-config")
+    canary.add_argument("--deployment", default="inference-api")
+    canary.add_argument(
+        "--no-apply",
+        action="store_true",
+        help="decide and report without changing live traffic (dry run)",
+    )
+    canary.set_defaults(handler=command_canary)
 
     serve = subparsers.add_parser("serve", help="serve the production model over HTTP")
     serve.add_argument("--host", default="127.0.0.1")

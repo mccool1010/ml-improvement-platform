@@ -13,6 +13,7 @@ keep it running while withholding traffic.
 from __future__ import annotations
 
 import logging
+import time
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
@@ -30,10 +31,18 @@ from ml_platform.observability.metrics import (
     OUTCOME_ERROR,
     OUTCOME_SUCCESS,
     OUTCOME_UNAVAILABLE,
+    observe_canary_request,
     observe_prediction,
     set_model_ready,
 )
 from ml_platform.observability.tracing import add_span_attributes
+from ml_platform.serving.canary import (
+    ROUTING_KEY_HEADER,
+    TIER_CANARY,
+    TIER_PRODUCTION,
+    CanaryRouter,
+    routing_key_for,
+)
 from ml_platform.serving.client import PredictorError
 
 LOGGER = logging.getLogger(__name__)
@@ -53,8 +62,32 @@ def _service(request: Request) -> ModelService:
     return service
 
 
-def _model_info(service: ModelService) -> ModelInfo:
+def _router(request: Request) -> CanaryRouter:
+    held = getattr(request.app.state, "canary_router", None)
+    return held if isinstance(held, CanaryRouter) else CanaryRouter()
+
+
+def _model_info(service: ModelService, tier: str = TIER_PRODUCTION) -> ModelInfo:
+    """Which model answered.
+
+    When the canary served the request, the reported version is the candidate's
+    -- reporting the incumbent's would make a canary untraceable in exactly the
+    situation where tracing matters.
+    """
     model = service.model
+    if tier == TIER_CANARY and model.canary_predictor is not None:
+        return ModelInfo(
+            name=model.name,
+            version=model.canary_version,
+            alias="canary",
+            feature_set=model.feature_set,
+            mlflow_run_id=model.mlflow_run_id,
+            platform_run_id=model.platform_run_id,
+            decision_threshold=model.decision_threshold,
+            threshold_source=model.threshold_source,
+            served_by=model.served_by,
+            serving_tier=TIER_CANARY,
+        )
     return ModelInfo(
         name=model.name,
         version=model.version,
@@ -137,9 +170,25 @@ def predict(request: Request, payload: PredictionRequest) -> PredictionResponse:
         [application.to_frame() for application in payload.applications], ignore_index=True
     )
 
+    # Which tier serves this request. Deterministic and sticky: the same
+    # application always reaches the same model, so a retry cannot silently
+    # cross tiers and a report can name exactly which requests it covered.
+    router = _router(request)
+    routing_key = routing_key_for(
+        payload.model_dump(mode="json"), request.headers.get(ROUTING_KEY_HEADER)
+    )
+    tier = router.tier_for(routing_key)
+    started = time.perf_counter()
+
     try:
-        probabilities = model.predict(frame)
+        probabilities = model.predict_with(tier, frame)
     except PredictorError as exc:
+        observe_canary_request(
+            tier,
+            duration_seconds=time.perf_counter() - started,
+            failed=True,
+            upstream_failure=True,
+        )
         observe_prediction(API_SERVICE, OUTCOME_UNAVAILABLE)
         # The model tier is unreachable or refused. The caller's request was
         # fine, so this is not 422: blaming a valid request for a dependency
@@ -151,6 +200,7 @@ def predict(request: Request, payload: PredictionRequest) -> PredictionResponse:
             detail=f"the model tier could not be reached: {exc}",
         ) from exc
     except Exception as exc:
+        observe_canary_request(tier, duration_seconds=time.perf_counter() - started, failed=True)
         observe_prediction(API_SERVICE, OUTCOME_ERROR)
         LOGGER.warning("scoring failed", exc_info=True)
         raise HTTPException(
@@ -168,6 +218,7 @@ def predict(request: Request, payload: PredictionRequest) -> PredictionResponse:
         for probability in probabilities
     ]
 
+    observe_canary_request(tier, duration_seconds=time.perf_counter() - started)
     observe_prediction(
         API_SERVICE,
         OUTCOME_SUCCESS,
@@ -181,7 +232,8 @@ def predict(request: Request, payload: PredictionRequest) -> PredictionResponse:
             "ml.batch.size": len(predictions),
             "ml.model.version": model.version,
             "ml.model.served_by": model.served_by,
+            "ml.serving.tier": tier,
         }
     )
 
-    return PredictionResponse(predictions=predictions, model=_model_info(service))
+    return PredictionResponse(predictions=predictions, model=_model_info(service, tier=tier))

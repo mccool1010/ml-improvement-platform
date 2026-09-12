@@ -44,6 +44,8 @@ data/processed/*
 # correct and stays as it is; the churn is what gets ignored.
 /artifacts/reports/drift-*.json
 /artifacts/benchmarks/retrain-*.json
+# M14 writes one canary decision report per evaluation, same churn.
+/artifacts/benchmarks/canary-*.json
 # Model binaries are not: they are large and rebuildable from a tracked record.
 
 # Local env / editor

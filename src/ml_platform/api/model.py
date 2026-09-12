@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from ml_platform.promotion.registry import resolve_production
+from ml_platform.serving.canary import TIER_CANARY
 from ml_platform.serving.client import RemotePredictor, build_predictor
 from ml_platform.serving.scoring import score
 
@@ -53,6 +54,22 @@ class LoadedModel:
     #: Set when the model tier is a KServe InferenceService. Then ``pipeline``
     #: is ``None``: this process does not hold the model at all.
     predictor: RemotePredictor | None = None
+    #: The canary tier, when one is running. Requests the router sends here are
+    #: scored by the candidate instead of the incumbent.
+    canary_predictor: RemotePredictor | None = None
+    canary_version: str | None = None
+
+    def predict_with(self, tier: str, frame: pd.DataFrame) -> list[float]:
+        """Score through a named tier.
+
+        The canary path deliberately has no fallback to production. Quietly
+        answering from the incumbent when the candidate fails would hide the
+        exact failure the canary exists to surface, and would make the error
+        rate the decision rests on read as zero.
+        """
+        if tier == TIER_CANARY and self.canary_predictor is not None:
+            return self.canary_predictor.predict(frame)
+        return self.predict(frame)
 
     @property
     def served_by(self) -> str:
@@ -152,9 +169,12 @@ class ModelService:
                 pipeline = mlflow.sklearn.load_model(uri)
 
             threshold, source = _threshold_from(tags)
+            canary_predictor = self._build_canary(config)
             self._model = LoadedModel(
                 pipeline=pipeline,
                 predictor=predictor,
+                canary_predictor=canary_predictor,
+                canary_version=self._canary_version(config) if canary_predictor else None,
                 name=production.name,
                 version=production.version,
                 alias=config.production_alias,
@@ -180,6 +200,37 @@ class ModelService:
             self._error = f"could not load the production model: {exc}"
             LOGGER.warning(self._error, exc_info=True)
             return False
+
+    def _build_canary(self, config: Config) -> RemotePredictor | None:
+        """A client for the canary tier, when the deployment configured one."""
+        if not config.canary_enabled:
+            return None
+        from ml_platform.serving.client import RemotePredictor as Client
+
+        LOGGER.info(
+            "canary tier configured at %s (%.2f%% of traffic)",
+            config.canary_predictor_url,
+            config.canary_traffic_percent,
+        )
+        return Client(
+            str(config.canary_predictor_url),
+            config.canary_model_name,
+            timeout=config.predictor_timeout_seconds,
+        )
+
+    def _canary_version(self, config: Config) -> str | None:
+        """Which registered version the canary alias points at, if any."""
+        try:
+            import mlflow
+
+            mlflow.set_tracking_uri(config.tracking_uri)
+            version = mlflow.MlflowClient().get_model_version_by_alias(
+                config.registered_model_name, config.canary_alias
+            )
+            return str(version.version)
+        except Exception:
+            LOGGER.info("no %r alias is set; the canary version is unknown", config.canary_alias)
+            return None
 
     def _version_tags(self, production: Any) -> dict[str, str]:
         """Registry tags for the resolved version, or an empty mapping."""

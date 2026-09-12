@@ -151,6 +151,9 @@ class ModelInfo(BaseModel):
     #: "kserve" when a KServe InferenceService scored it, "in-process" when this
     #: service did. Reported so which tier answered is never inferred.
     served_by: str = "in-process"
+    #: "production" or "canary". Which tier answered, so a caller and a decision
+    #: report can both tell without inferring it from the version.
+    serving_tier: str = "production"
 
 
 class Prediction(BaseModel):

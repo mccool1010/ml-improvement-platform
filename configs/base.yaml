@@ -99,6 +99,38 @@ serving:
   predictor_model_name: sba-loan-default
   predictor_timeout_seconds: 10.0
 
+canary:
+  # A candidate under canary holds this alias. It is deliberately not the
+  # production alias: a model being tested must be identifiable and loadable
+  # without already being what production means.
+  alias: canary
+  model_name: sba-loan-default-canary
+  # Null and 0 mean no canary is running, which is the normal state. The
+  # deployment sets ML_PLATFORM_CANARY_URL and ML_PLATFORM_CANARY_TRAFFIC_PERCENT
+  # when one starts, so every API replica agrees on the allocation.
+  predictor_url: null
+  traffic_percent: 0.0
+  observation_seconds: 300
+
+  # Operational limits only. ADR-003 gives rollback authority to error rate,
+  # latency, timeouts and serving health, and explicitly withholds it from
+  # accuracy: realised performance takes five years to arrive on this dataset,
+  # so a canary waiting for it would never conclude. Offline quality was already
+  # judged by the M6 gates before any traffic moved.
+  thresholds:
+    # Below this, there is not enough evidence to decide either way. A `hold`
+    # is not a failure.
+    min_requests: 50
+    # Absolute ceilings: unacceptable however the incumbent is doing.
+    max_error_rate: 0.02
+    max_failure_rate: 0.01
+    max_latency_p95_seconds: 1.0
+    # Relative to the incumbent, because the candidate is replacing something
+    # specific. An absolute-only check passes a model twice as slow as
+    # production that still sits inside the ceiling.
+    max_error_rate_ratio: 2.0
+    max_latency_ratio: 1.5
+
 monitoring:
   # Retraining may only use rows whose 60-month horizon closed before the
   # observation cutoff. Left unset this is derived as observation_end minus the

@@ -81,13 +81,26 @@ def register_candidate(
     config: Config,
     record: RunRecord,
     report: GateReport,
+    *,
+    alias: str | None = None,
 ) -> tuple[str | None, str | None]:
-    """Register the candidate and move the production alias to it.
+    """Register the candidate and point an alias at it.
 
     Returns ``(model_name, version)``, or ``(None, None)`` if registration could
     not complete. Refuses outright when the gates did not pass, so this function
     cannot be the way a rejected model reaches the registry.
+
+    ``alias`` defaults to the production alias, which is the behaviour every
+    caller before M14 relies on: passing the gates makes a model production. M14
+    passes the *canary* alias instead, so a gated candidate can be registered and
+    served without yet being what production means -- the production alias moves
+    only after the canary has also passed, in
+    :func:`ml_platform.pipelines.canary_pipeline.complete`.
+
+    Note what has not changed: only a candidate whose gates passed reaches this
+    function at all. The canary is an additional hurdle, never a way round M6.
     """
+    target_alias = alias or config.production_alias
     if not report.promote:
         raise ValueError(
             "refusing to register a candidate that failed "
@@ -114,13 +127,13 @@ def register_candidate(
         )
 
         client.set_registered_model_alias(
-            config.registered_model_name, config.production_alias, version.version
+            config.registered_model_name, target_alias, version.version
         )
         LOGGER.info(
             "registered %s v%s and moved alias %r",
             config.registered_model_name,
             version.version,
-            config.production_alias,
+            target_alias,
         )
         return config.registered_model_name, str(version.version)
 

@@ -54,8 +54,16 @@ def run_promotion(
     param_overrides: dict[str, Any] | None = None,
     register: bool = True,
     nrows: int | None = None,
+    alias: str | None = None,
 ) -> tuple[PromotionDecision, Comparison]:
-    """Evaluate a candidate for promotion and register it if it passes."""
+    """Evaluate a candidate for promotion and register it if it passes.
+
+    ``alias`` is passed straight through to
+    :func:`ml_platform.promotion.registry.register_candidate`; ``None`` means the
+    production alias, which is what every caller before M14 expects. M14 uses it
+    to register a gated candidate under the canary alias, so traffic can reach it
+    before it becomes production.
+    """
     cfg = config or load_config(environment)
 
     record = candidate or run_training(
@@ -74,7 +82,7 @@ def run_promotion(
         LOGGER.info("  %s", gate.describe())
 
     if decision.report.promote and register:
-        name, version = register_candidate(cfg, record, decision.report)
+        name, version = register_candidate(cfg, record, decision.report, alias=alias)
         decision.registered = version is not None
         decision.registered_model = name
         decision.version = version

@@ -1,0 +1,96 @@
+# The canary model tier.
+#
+# A second InferenceService, which is what "the canary is a second
+# InferenceService, not a second way of serving" means in practice. KServe serves
+# both; the application tier decides which one a request reaches.
+#
+# It is deliberately a near-copy of 31-inferenceservice.yaml rather than a
+# generated overlay -- templating it is recorded as deferred in docs/canary.md.
+# The two differences that matter are the name and MODEL_NAME, because the V1
+# protocol addresses a named model and the predictor refuses any other name.
+#
+# storageUri here points at the same artifact as production, because this
+# registry holds one model version. That makes this a real two-InferenceService
+# canary whose two tiers happen to serve identical weights: it exercises
+# routing, health, metrics and rollback honestly, and proves nothing about a
+# quality difference. Said plainly rather than implied.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: sba-loan-default-canary
+  namespace: ml-platform
+  labels:
+    app.kubernetes.io/name: sba-loan-default-canary
+    app.kubernetes.io/component: model-canary
+    app.kubernetes.io/part-of: ml-platform
+  annotations:
+    # No Knative and no service mesh in this cluster. Raw mode gives a plain
+    # Deployment, Service and HPA, which is all the model tier needs while
+    # traffic splitting is still a later milestone.
+    serving.kserve.io/deploymentMode: RawDeployment
+    # Traceability, carried on the object a reader will actually look at.
+    ml-platform.io/registered-model: sba-loan-default-classifier
+    ml-platform.io/model-version: "1"
+    ml-platform.io/registry-alias: production
+    ml-platform.io/platform-run-id: candidate-20260906T175308Z
+spec:
+  predictor:
+    # KServe copies these onto the pod it creates. That is the only way to
+    # annotate a Deployment this repository does not write, and it is how the
+    # model tier ends up scraped and traced alongside the application tier.
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8080"
+      prometheus.io/path: /metrics
+
+    # One replica. Autoscaling the model tier is not this milestone's question,
+    # and a second replica would only double the memory for no served benefit.
+    minReplicas: 1
+    maxReplicas: 1
+    model:
+      modelFormat:
+        name: mlflow
+        version: "3"
+      # Named explicitly; the runtime does not auto-select.
+      runtime: mlflow-lockfile-runtime
+      env:
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://jaeger:4318
+        # The V1 protocol addresses a named model and the predictor refuses a
+        # name it does not serve, so the canary tier must answer to the canary
+        # name the application tier asks for.
+        - name: MODEL_NAME
+          value: sba-loan-default-canary
+      storageUri: pvc://mlflow-store/artifacts/1/5066e44b4e134aff91e703d7daaf6ca3/artifacts/model
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+      # MLflow's scoring server answers /health once the model is deserialised
+      # and ready to score, so readiness here means the same thing it means for
+      # the application tier: it can actually do the work.
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 3
+      # Deserialising the pipeline and importing scikit-learn takes appreciably
+      # longer than answering a request, and that is not a liveness failure.
+      startupProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        periodSeconds: 5
+        failureThreshold: 40

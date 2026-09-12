@@ -20,6 +20,7 @@ from ml_platform.api.model import ModelService
 from ml_platform.api.routes import router
 from ml_platform.config import Config, load_config
 from ml_platform.observability import API_SERVICE, metrics, tracing
+from ml_platform.serving.canary import TIER_CANARY, TIER_PRODUCTION, CanaryRouter
 
 LOGGER = logging.getLogger(__name__)
 
@@ -38,6 +39,20 @@ def create_app(config: Config | None = None, *, load_on_startup: bool = True) ->
             service.load()
         app.state.model_service = service
         app.state.config = settings
+
+        # The router reads its allocation from configuration, so every replica
+        # agrees on the split by construction rather than by coordination.
+        router = CanaryRouter()
+        if settings.canary_enabled:
+            router.start(
+                traffic_percent=settings.canary_traffic_percent,
+                candidate_url=str(settings.canary_predictor_url),
+                candidate_version=service.model.canary_version if service.loaded else None,
+                incumbent_version=service.model.version if service.loaded else None,
+            )
+        app.state.canary_router = router
+        metrics.set_canary_traffic(router.traffic_percent)
+
         _publish_model_info(service)
         yield
 
@@ -72,6 +87,12 @@ def _publish_model_info(service: ModelService) -> None:
         return
     model = service.model
     metrics.set_model_ready(API_SERVICE, True)
+    # Health per tier, which is what a canary decision reads first: an unhealthy
+    # candidate is rolled back without measuring anything else.
+    metrics.set_canary_tier_healthy(TIER_PRODUCTION, True)
+    if model.canary_predictor is not None:
+        reachable, _ = model.canary_predictor.ready()
+        metrics.set_canary_tier_healthy(TIER_CANARY, reachable)
     metrics.set_model_info(API_SERVICE, model.name, model.version, model.alias, model.served_by)
 
 

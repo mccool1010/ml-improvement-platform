@@ -13,6 +13,7 @@ namespace: ml-platform
 resources:
   - 30-servingruntime.yaml
   - 31-inferenceservice.yaml
+  - 32-inferenceservice-canary.yaml
 
 labels:
   - includeSelectors: false
