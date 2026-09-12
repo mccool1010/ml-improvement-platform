@@ -374,6 +374,31 @@ belongs to a different clock. Every label is drawn from a fixed set, and the
 route label is a template rather than a path, so a thousand distinct URLs are one
 series and not a thousand. See [docs/observability.md](docs/observability.md).
 
+## Drift and retraining
+
+```bash
+python -m ml_platform drift                          # compare training vs production window
+python -m ml_platform drift --scenario lending_shift # controlled demonstration
+python -m ml_platform retrain                        # retrain if drifted, then run the gates
+```
+
+Drift is measured on the engineered features, by PSI with KS and chi-square as
+corroboration, against a deterministic slice of the quarantined 2006-mid-2009
+production stream. It reads **inputs only**: it can trigger a retraining attempt
+and can never reject a model, because saying a model got worse needs matured
+labels that take five years to arrive on this dataset.
+
+Retraining adds the current window to the training data and produces a
+*candidate*. That candidate goes through the existing M6 gates on the same
+validation split as any other, so a retrained model that is worse is rejected and
+production is untouched. Run for real, the retrained candidate improved
+validation AP by 0.0024 and was **rejected** for being inside the noise band the
+gate exists to filter.
+
+Everything carries a `drift_event_id`, so a promotion can be traced back to the
+check that caused it. See [docs/drift.md](docs/drift.md), which also states
+exactly which labels retraining is allowed to use and why.
+
 ## Design decisions worth knowing
 
 **The label is a fixed 60-month horizon, not "did it eventually default".** The
@@ -415,6 +440,7 @@ reproducibility check compares that hash exactly.
 | [docs/kubernetes.md](docs/kubernetes.md) | The cluster architecture, the tracking server it needed, and the deploy runbook |
 | [docs/kserve.md](docs/kserve.md) | The two serving tiers, the runtime choice, and the KServe install |
 | [docs/observability.md](docs/observability.md) | Metrics, the dashboard, tracing, and what is deliberately not measured |
+| [docs/drift.md](docs/drift.md) | Drift methodology, the controlled scenario, and which labels retraining may use |
 | [ADR-001](docs/decisions/ADR-001-model-choice.md) | Dataset, label and model family |
 | [ADR-002](docs/decisions/ADR-002-serving.md) | Why KServe is the only serving path |
 | [ADR-003](docs/decisions/ADR-003-promotion-strategy.md) | Promotion gates, drift, rollback |
@@ -436,7 +462,8 @@ reproducibility check compares that hash exactly.
 | M10 Kubernetes | Complete, API and an MLflow tracking server, with artifacts served over HTTP |
 | M11 KServe serving | Complete, KServe owns the model tier; FastAPI is the application tier |
 | M12 observability | Complete, Prometheus, Grafana, OpenTelemetry and Jaeger across both tiers |
-| M13 to M16 | Planned |
+| M13 drift and retraining | Complete, drift triggers retraining; the M6 gates still decide |
+| M14 to M16 | Planned |
 
 Built milestone by milestone, each verified by running it.
 

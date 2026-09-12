@@ -162,6 +162,59 @@ def command_optimize(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_drift(args: argparse.Namespace) -> int:
+    """Compare the training distribution against the production window."""
+    _bootstrap(args.environment)
+    from ml_platform.pipelines.drift_pipeline import describe_event, run_drift_check
+
+    event = run_drift_check(environment=args.environment, scenario=args.scenario, nrows=args.nrows)
+    print()
+    print(describe_event(event))
+    # Non-zero when retraining is indicated, so a scheduler can branch on it.
+    # This is not a failure: drift is a finding, not an error.
+    return 0 if event.decision == "no_action" else 2
+
+
+def command_retrain(args: argparse.Namespace) -> int:
+    """Check for drift and, if found, retrain and put the result to the gates."""
+    _bootstrap(args.environment)
+    from ml_platform.pipelines.retrain_pipeline import run_retraining
+
+    outcome = run_retraining(
+        environment=args.environment,
+        scenario=args.scenario,
+        model_key=args.model,
+        force=args.force,
+        register=not args.no_register,
+        nrows=args.nrows,
+    )
+
+    print()
+    print(f"drift event     {outcome.drift_event.event_id} -> {outcome.drift_event.decision}")
+    print(f"window          {outcome.drift_event.window.describe()}")
+    print(f"triggered       {outcome.triggered} ({outcome.reason})")
+    if outcome.decision is not None:
+        report = outcome.decision.report
+        print(f"candidate       {outcome.candidate_run_id}")
+        print(f"decided on      {report.decision_split} split")
+        print()
+        for gate in report.gates:
+            print(f"  {gate.describe()}")
+            if gate.reason:
+                print(f"        reason: {gate.reason}")
+        print()
+        print(report.summary())
+        if outcome.registered:
+            print(
+                f"registered      {outcome.decision.registered_model} v{outcome.decision.version}"
+            )
+        elif outcome.triggered:
+            print("NOT registered; production is unchanged")
+    print()
+    print(outcome.summary())
+    return 0 if (not outcome.triggered or outcome.promoted) else 1
+
+
 def command_promote(args: argparse.Namespace) -> int:
     """Evaluate a candidate against production and register it if it passes."""
     _bootstrap(args.environment)
@@ -251,6 +304,29 @@ def build_parser() -> argparse.ArgumentParser:
     promote.add_argument("--no-register", action="store_true", help="evaluate gates only")
     promote.add_argument("--nrows", type=int, default=None, help="read only N raw rows")
     promote.set_defaults(handler=command_promote)
+
+    drift = subparsers.add_parser(
+        "drift", help="compare the training distribution against the production window"
+    )
+    drift.add_argument(
+        "--scenario",
+        default=None,
+        help="controlled drift scenario to apply to the window (default: configured)",
+    )
+    drift.add_argument("--nrows", type=int, default=None, help="read only N raw rows")
+    drift.set_defaults(handler=command_drift)
+
+    retrain = subparsers.add_parser(
+        "retrain", help="retrain on the current window when drift is detected, then run the gates"
+    )
+    retrain.add_argument("--scenario", default=None, help="controlled drift scenario")
+    retrain.add_argument("--model", default="candidate", choices=["baseline", "candidate"])
+    retrain.add_argument(
+        "--force", action="store_true", help="retrain even when no drift was detected"
+    )
+    retrain.add_argument("--no-register", action="store_true", help="evaluate gates only")
+    retrain.add_argument("--nrows", type=int, default=None, help="read only N raw rows")
+    retrain.set_defaults(handler=command_retrain)
 
     serve = subparsers.add_parser("serve", help="serve the production model over HTTP")
     serve.add_argument("--host", default="127.0.0.1")

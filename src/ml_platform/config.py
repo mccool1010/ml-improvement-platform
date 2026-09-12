@@ -226,6 +226,72 @@ class Config:
     def _observability(self) -> dict[str, Any]:
         return dict(self.raw.get("observability") or {})
 
+    # --- drift and retraining (M13) ---------------------------------------
+    @property
+    def _monitoring(self) -> dict[str, Any]:
+        return dict(self.raw.get("monitoring") or {})
+
+    @property
+    def _drift(self) -> dict[str, Any]:
+        return dict(self._monitoring.get("drift") or {})
+
+    @property
+    def drift_reference_split(self) -> str:
+        """Split whose distribution a model is held to have learned."""
+        return str(self._drift.get("reference_split", "train"))
+
+    @property
+    def drift_feature_set(self) -> str:
+        return str(self._drift.get("feature_set", "engineered"))
+
+    @property
+    def drift_threshold_psi(self) -> float:
+        """PSI above which one feature counts as drifted."""
+        return float(self._drift.get("threshold_psi", 0.1))
+
+    @property
+    def drift_min_features(self) -> int:
+        """How many drifted features make it a population-level event.
+
+        One feature can move for a mundane reason. Requiring several is what
+        stops every blip churning the registry.
+        """
+        return int(self._drift.get("min_drifted_features", 2))
+
+    @property
+    def _drift_window(self) -> dict[str, Any]:
+        return dict(self._drift.get("window") or {})
+
+    @property
+    def drift_window_start(self) -> date:
+        return _as_date(self._drift_window["start"])
+
+    @property
+    def drift_window_end(self) -> date:
+        return _as_date(self._drift_window["end"])
+
+    @property
+    def drift_scenario(self) -> str:
+        """Named controlled scenario, or ``none`` for the untouched window."""
+        return str(self._drift_window.get("scenario", "none"))
+
+    @property
+    def label_maturity_end(self) -> date:
+        """Last approval date whose 60-month horizon has fully elapsed.
+
+        Retraining may only use rows at or before this date. A label is not
+        available because the row exists; it is available because its horizon
+        closed before the observation cutoff. See docs/drift.md.
+        """
+        configured = self._monitoring.get("label_maturity_end")
+        if configured is not None:
+            return _as_date(configured)
+        # Derived rather than assumed: observation_end minus the label horizon.
+        months = int(self.raw["label"]["horizon_months"])
+        cutoff = self.observation_end
+        year = cutoff.year - months // 12
+        return date(year, cutoff.month, cutoff.day)
+
     # --- promotion (M6) ---------------------------------------------------
     @property
     def _promotion(self) -> dict[str, Any]:

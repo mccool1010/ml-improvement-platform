@@ -20,9 +20,10 @@ from typing import Any
 import pandas as pd
 
 from ml_platform import determinism, tracking
-from ml_platform.config import Config, load_config
+from ml_platform.config import Config, DateWindow, load_config
 from ml_platform.data import ingestion, preprocessing, validation
 from ml_platform.data.splitting import Split, make_splits, subsample
+from ml_platform.determinism import ROW_SORT_KIND
 from ml_platform.models.evaluate import EvaluationResult, evaluate_model, lift_over_base_rate
 from ml_platform.models.train import TrainedModel, features_and_target, train
 from ml_platform.paths import ensure_dir, relative_to_root
@@ -119,6 +120,28 @@ def load_prepared_dataset(config: Config, *, nrows: int | None = None) -> tuple[
     return prepared, checksum
 
 
+def _extend_training_split(base: Split, extra: pd.DataFrame, cfg: Config) -> Split:
+    """Training rows plus a production window, in one deterministic order.
+
+    Concatenated then re-sorted by approval date with the project's pinned sort
+    kind. Row order is not cosmetic here: gradient boosting accumulates in it, so
+    an unsorted append would make the result depend on which frame came first.
+    """
+    missing = [c for c in base.frame.columns if c not in extra.columns]
+    if missing:
+        raise ValueError(f"the extra training frame is missing columns: {missing}")
+
+    combined = pd.concat([base.frame, extra[base.frame.columns]], ignore_index=True)
+    combined = combined.sort_values(cfg.split_date_column, kind=ROW_SORT_KIND).reset_index(
+        drop=True
+    )
+    window = DateWindow(
+        start=min(base.window.start, combined[cfg.split_date_column].min().date()),
+        end=max(base.window.end, combined[cfg.split_date_column].max().date()),
+    )
+    return Split(base.name, window, combined)
+
+
 def run_training(
     environment: str = "production",
     model_key: str = "baseline",
@@ -127,12 +150,20 @@ def run_training(
     save_model: bool = True,
     nrows: int | None = None,
     param_overrides: dict[str, Any] | None = None,
+    extra_training_frame: pd.DataFrame | None = None,
+    training_note: str | None = None,
 ) -> RunRecord:
     """Train one model end to end and return its run record.
 
     ``param_overrides`` replaces individual hyperparameters in the configured
     specification. It exists so a tuned candidate from M5 reaches the same
     RunRecord machinery as every other run, rather than a parallel path.
+
+    ``extra_training_frame`` appends rows to the training split and nothing else.
+    M13 uses it to retrain on a drifted production window. It is inert when
+    absent, so every existing run is unchanged and still bit-exact -- and the
+    evaluation splits are deliberately untouched, because the M6 gates compare a
+    candidate against metrics the incumbent recorded on those exact windows.
     """
     cfg = config or load_config(environment)
 
@@ -164,7 +195,16 @@ def run_training(
     if param_overrides:
         spec["params"] = {**dict(spec.get("params") or {}), **param_overrides}
         LOGGER.info("applying %d hyperparameter override(s)", len(param_overrides))
-    trained = train(spec, splits["train"], cfg.target_column)
+
+    training_split = splits["train"]
+    if extra_training_frame is not None:
+        training_split = _extend_training_split(training_split, extra_training_frame, cfg)
+        LOGGER.info(
+            "training on the configured window plus %d extra row(s): %d total",
+            len(extra_training_frame),
+            training_split.n_rows,
+        )
+    trained = train(spec, training_split, cfg.target_column)
 
     metrics: dict[str, dict[str, Any]] = {}
     for name in DEVELOPMENT_SPLITS:
@@ -210,7 +250,25 @@ def run_training(
         feature_set=trained.feature_set,
         n_features=n_features,
         train_seconds=trained.train_seconds,
-        splits=[splits[name].describe(cfg.target_column) for name in cfg.split_names],
+        splits=[
+            *(
+                {**splits[name].describe(cfg.target_column), "used_for_training": name == "train"}
+                for name in cfg.split_names
+            ),
+            *(
+                []
+                if extra_training_frame is None
+                else [
+                    {
+                        "name": "retraining_window",
+                        "n_rows": len(extra_training_frame),
+                        "n_positive": int(extra_training_frame[cfg.target_column].sum()),
+                        "note": training_note or "extra training rows",
+                        "used_for_training": True,
+                    }
+                ]
+            ),
+        ],
         metrics=metrics,
         validation_reports=[
             "raw schema checked",

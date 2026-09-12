@@ -99,6 +99,38 @@ serving:
   predictor_model_name: sba-loan-default
   predictor_timeout_seconds: 10.0
 
+monitoring:
+  # Retraining may only use rows whose 60-month horizon closed before the
+  # observation cutoff. Left unset this is derived as observation_end minus the
+  # label horizon; it is stated here so the rule is visible rather than implied.
+  # This is the line between "a label that has matured" and one that would have
+  # to be invented, and M13 never crosses it. See docs/drift.md.
+  label_maturity_end: "2009-06-25"
+
+  drift:
+    # The distribution the production model is held to have learned.
+    reference_split: train
+    feature_set: engineered
+    # PSI above which a single feature counts as drifted. 0.1 is the
+    # conventional "noticeable shift" reading; 0.25 is "different population".
+    threshold_psi: 0.1
+    # How many features must move before this is a population-level event. One
+    # feature can shift for a mundane reason, and retraining on every blip would
+    # churn the registry for nothing.
+    min_drifted_features: 3
+    window:
+      # A slice of the quarantined 2006..mid-2009 production stream, which no
+      # model has trained on. Slicing by date is deterministic, so the same
+      # dates always give the same rows and the same report.
+      start: "2008-01-01"
+      # The maturity cutoff, not the end of the production stream. Approvals
+      # after this date have not had their 60-month horizon close before the
+      # observation cutoff, so they carry no usable outcome.
+      end: "2009-06-25"
+      # `none` compares the real window. The named scenarios in
+      # ml_platform.monitoring.windows perturb inputs only, never outcomes.
+      scenario: none
+
 observability:
   # Where traces go. Null means tracing is off, which is how the service runs on
   # a laptop and under test: there is no collector to export to. In Kubernetes

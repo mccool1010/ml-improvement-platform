@@ -38,6 +38,12 @@ data/processed/*
 # gate. The gate is correct and stays as it is; the churn is what gets ignored.
 # Reports already committed as M6 evidence remain tracked.
 /artifacts/benchmarks/promotion-*.json
+# M13 writes one drift report per check and one retraining report per attempt,
+# for the same reason and with the same consequence: the churn would leave the
+# working tree dirty and fail the *next* run's reproducibility gate. The gate is
+# correct and stays as it is; the churn is what gets ignored.
+/artifacts/reports/drift-*.json
+/artifacts/benchmarks/retrain-*.json
 # Model binaries are not: they are large and rebuildable from a tracked record.
 
 # Local env / editor
