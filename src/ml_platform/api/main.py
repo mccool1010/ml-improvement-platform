@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from ml_platform.api.model import ModelService
+from ml_platform.api.platform import router as platform_router
 from ml_platform.api.routes import router
 from ml_platform.config import Config, load_config
 from ml_platform.observability import API_SERVICE, metrics, tracing
@@ -66,6 +67,11 @@ def create_app(config: Config | None = None, *, load_on_startup: bool = True) ->
         lifespan=lifespan,
     )
     app.include_router(router)
+    # Read-only aggregation for the M16 dashboard. A separate router so the
+    # inference contract from M7 is untouched, and nothing here can serve a
+    # model or change platform state.
+    app.include_router(platform_router)
+    _mount_dashboard(app)
 
     # Telemetry last, so it wraps the finished application. Both calls are
     # failure-tolerant: metrics never raise, and tracing returns False and logs
@@ -73,6 +79,27 @@ def create_app(config: Config | None = None, *, load_on_startup: bool = True) ->
     metrics.install(app, API_SERVICE)
     tracing.configure(app, API_SERVICE, endpoint=settings.otlp_endpoint)
     return app
+
+
+def _mount_dashboard(app: FastAPI) -> None:
+    """Serve the built dashboard, if it has been built.
+
+    One serving surface rather than a second deployment: the dashboard is a
+    presentation layer over this API, so it is served by the process that owns
+    the data. Absent a build, nothing is mounted and the API is byte-for-byte
+    what M7 through M15 shipped -- which is also why no test needs node
+    installed.
+    """
+    from ml_platform.paths import project_root
+
+    dist = project_root() / "dashboard" / "dist"
+    if not (dist / "index.html").exists():
+        LOGGER.info("no built dashboard at dashboard/dist; skipping the mount")
+        return
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/dashboard", StaticFiles(directory=str(dist), html=True), name="dashboard")
+    LOGGER.info("serving the dashboard from %s", dist)
 
 
 def _publish_model_info(service: ModelService) -> None:

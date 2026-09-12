@@ -26,6 +26,39 @@ CONFIG_DIR = project_root() / "configs"
 #: for MLflow's own convention so a deployment sets one familiar thing.
 ENV_TRACKING_URI = "MLFLOW_TRACKING_URI"
 
+#: The override as it stood when this module was imported, plus anything a
+#: caller has since set deliberately through :func:`override_tracking_uri`.
+#:
+#: Read once rather than live, because ``mlflow.set_tracking_uri`` writes the
+#: same variable into ``os.environ`` as a side effect. Reading it live meant the
+#: first MLflow call anywhere in the process silently became the tracking URI
+#: for every Config built afterwards, whatever their configuration said — an
+#: override nobody asked for, arriving from a library. A deployment sets the
+#: variable before the process starts, so it is still honoured; what is ignored
+#: is our own dependency writing to it behind us.
+_TRACKING_URI_OVERRIDE: str | None = os.environ.get(ENV_TRACKING_URI)
+
+
+def override_tracking_uri(uri: str | None) -> str | None:
+    """Point every later ``Config.tracking_uri`` at ``uri``; returns the old value.
+
+    The deliberate path for a caller that genuinely needs to redirect tracking
+    for a whole operation — the failure harness aiming registry checks at the
+    cluster rather than the laptop. Pair it with a ``finally`` that puts the
+    previous value back.
+    """
+    global _TRACKING_URI_OVERRIDE
+    previous = _TRACKING_URI_OVERRIDE
+    _TRACKING_URI_OVERRIDE = uri
+    # Kept in step for subprocesses and for MLflow's own resolution, which
+    # reads the environment when nothing has called set_tracking_uri yet.
+    if uri is None:
+        os.environ.pop(ENV_TRACKING_URI, None)
+    else:
+        os.environ[ENV_TRACKING_URI] = uri
+    return previous
+
+
 #: Address of the KServe model tier. Its presence is what decides where scoring
 #: happens: set, the API calls the InferenceService; unset, it loads the model
 #: itself. One switch, so the two cannot be configured into contradiction.
@@ -38,6 +71,12 @@ ENV_OTLP_ENDPOINT = "OTEL_EXPORTER_OTLP_ENDPOINT"
 #: deployment so every API replica agrees on them by construction.
 ENV_CANARY_URL = "ML_PLATFORM_CANARY_URL"
 ENV_CANARY_TRAFFIC = "ML_PLATFORM_CANARY_TRAFFIC_PERCENT"
+
+#: Where the dashboard's aggregation layer reaches the observability tools.
+#: Links only for Grafana and Jaeger; Prometheus is actually queried.
+ENV_PROMETHEUS_URL = "ML_PLATFORM_PROMETHEUS_URL"
+ENV_GRAFANA_URL = "ML_PLATFORM_GRAFANA_URL"
+ENV_JAEGER_URL = "ML_PLATFORM_JAEGER_URL"
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -154,8 +193,12 @@ class Config:
         variable the MLflow ecosystem already uses. Without this the variable
         would be silently ignored, because every call site sets the URI from
         configuration explicitly.
+
+        The value is the one captured at import, not a live read: see
+        :data:`_TRACKING_URI_OVERRIDE` for why a live read let MLflow overwrite
+        configuration as a side effect of our own calls.
         """
-        raw = os.environ.get(ENV_TRACKING_URI) or str(
+        raw = _TRACKING_URI_OVERRIDE or str(
             self._tracking.get("backend_uri", "sqlite:///mlflow.db")
         )
         prefix = "sqlite:///"
@@ -230,6 +273,33 @@ class Config:
     @property
     def _observability(self) -> dict[str, Any]:
         return dict(self.raw.get("observability") or {})
+
+    # --- dashboard (M16) ---------------------------------------------------
+    @property
+    def _dashboard(self) -> dict[str, Any]:
+        return dict(self.raw.get("dashboard") or {})
+
+    @property
+    def prometheus_url(self) -> str | None:
+        """Where the API can reach Prometheus, for the metrics summary.
+
+        Read from configuration rather than assumed, because the answer differs
+        between a pod (the Service name) and a laptop (a port-forward). Absent,
+        the summary reports itself unavailable instead of guessing.
+        """
+        configured = os.environ.get(ENV_PROMETHEUS_URL) or self._dashboard.get("prometheus_url")
+        return str(configured) if configured else None
+
+    @property
+    def grafana_url(self) -> str | None:
+        """Pointer for the dashboard to link to. Grafana stays the observability tool."""
+        configured = os.environ.get(ENV_GRAFANA_URL) or self._dashboard.get("grafana_url")
+        return str(configured) if configured else None
+
+    @property
+    def jaeger_url(self) -> str | None:
+        configured = os.environ.get(ENV_JAEGER_URL) or self._dashboard.get("jaeger_url")
+        return str(configured) if configured else None
 
     # --- canary (M14) ------------------------------------------------------
     @property

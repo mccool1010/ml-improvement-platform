@@ -99,6 +99,16 @@ serving:
   predictor_model_name: sba-loan-default
   predictor_timeout_seconds: 10.0
 
+dashboard:
+  # The M16 dashboard aggregates from these. Null means "report it as
+  # unavailable", which is the honest default on a laptop with no port-forward:
+  # the deployment sets them to the cluster Service names.
+  prometheus_url: null
+  # Links only. Grafana and Jaeger remain the observability systems and the
+  # dashboard does not reimplement either.
+  grafana_url: null
+  jaeger_url: null
+
 canary:
   # A candidate under canary holds this alias. It is deliberately not the
   # production alias: a model being tested must be identifiable and loadable

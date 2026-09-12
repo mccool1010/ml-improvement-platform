@@ -54,14 +54,15 @@ def run(
     ``tracking_uri`` points the registry checks at the cluster's MLflow rather
     than whatever the local configuration names. Without it a live run asks the
     laptop's SQLite store whether the cluster's registry is up, which it will
-    cheerfully answer.
+    cheerfully answer. It is set for the duration of the run and restored
+    afterwards: the environment variable outranks configuration, so leaving it
+    behind would silently redirect every later registry read in the process.
     """
-    import os
+    from ml_platform.config import override_tracking_uri
 
-    from ml_platform.config import ENV_TRACKING_URI
-
+    previous: str | None = None
     if tracking_uri:
-        os.environ[ENV_TRACKING_URI] = tracking_uri
+        previous = override_tracking_uri(tracking_uri)
         LOGGER.info("registry checks will use %s", tracking_uri)
     chosen = names or ALL_SCENARIOS
     report = FailureReport(run_id=new_run_id())
@@ -71,21 +72,27 @@ def run(
         LOGGER.warning("no cluster is reachable; live scenarios will be skipped")
         live = False
 
-    for name in chosen:
-        if name in LIVE_SCENARIOS:
-            if not live:
-                LOGGER.info("skipping live scenario %s", name)
-                continue
-            LOGGER.info("running live scenario %s", name)
-            evidence = LIVE_SCENARIOS[name](cluster, base_url, config)
-        elif name in OFFLINE_SCENARIOS:
-            LOGGER.info("running scenario %s", name)
-            evidence = OFFLINE_SCENARIOS[name](offline_config or config)
-        else:
-            raise ValueError(f"unknown scenario {name!r}; known: {ALL_SCENARIOS}")
+    try:
+        for name in chosen:
+            if name in LIVE_SCENARIOS:
+                if not live:
+                    LOGGER.info("skipping live scenario %s", name)
+                    continue
+                LOGGER.info("running live scenario %s", name)
+                evidence = LIVE_SCENARIOS[name](cluster, base_url, config)
+            elif name in OFFLINE_SCENARIOS:
+                LOGGER.info("running scenario %s", name)
+                evidence = OFFLINE_SCENARIOS[name](offline_config or config)
+            else:
+                raise ValueError(f"unknown scenario {name!r}; known: {ALL_SCENARIOS}")
 
-        LOGGER.info(evidence.summary())
-        report.scenarios.append(evidence)
+            LOGGER.info(evidence.summary())
+            report.scenarios.append(evidence)
+    finally:
+        # The same discipline every injector in this harness follows: whatever
+        # was changed to run a scenario is put back, including process state.
+        if tracking_uri:
+            override_tracking_uri(previous)
 
     return report
 

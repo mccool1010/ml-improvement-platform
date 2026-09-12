@@ -14,10 +14,12 @@ restore path is tested including the case where the observation itself raises.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import pytest
 
+from ml_platform.config import ENV_TRACKING_URI
 from ml_platform.failure import invariants as inv
 from ml_platform.failure.report import (
     MODE_DOUBLE,
@@ -307,6 +309,83 @@ class TestTheHarnessRestoresWhatItBreaks:
 
         control.restore(state)
         assert ("scale", "deployment/thing", "--replicas=3") in calls
+
+    def test_the_tracking_uri_override_is_restored(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Process state counts as something the harness broke.
+
+        The override outranks configuration, so a run that left it set would
+        silently redirect every later registry read in the same process --
+        including a caller that explicitly configured a different store. Found
+        when the M16 aggregation tests, which point MLflow at a dead address,
+        started reporting it healthy after this module had run.
+        """
+        from ml_platform import config as config_module
+        from ml_platform.failure import runner
+
+        monkeypatch.setattr(config_module, "_TRACKING_URI_OVERRIDE", "http://was-here:5000")
+        runner.run(
+            _StubConfig(),
+            base_url="http://unused",
+            names=["model_serving_failure"],
+            live=False,
+            tracking_uri="http://only-during-the-run:5000",
+        )
+        assert config_module._TRACKING_URI_OVERRIDE == "http://was-here:5000"
+
+    def test_the_tracking_uri_override_is_removed_if_it_was_unset(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from ml_platform import config as config_module
+        from ml_platform.failure import runner
+
+        monkeypatch.setattr(config_module, "_TRACKING_URI_OVERRIDE", None)
+        runner.run(
+            _StubConfig(),
+            base_url="http://unused",
+            names=["model_serving_failure"],
+            live=False,
+            tracking_uri="http://only-during-the-run:5000",
+        )
+        assert config_module._TRACKING_URI_OVERRIDE is None
+        assert ENV_TRACKING_URI not in os.environ
+
+    def test_the_tracking_uri_is_restored_even_when_a_scenario_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from ml_platform import config as config_module
+        from ml_platform.failure import runner
+
+        monkeypatch.setattr(config_module, "_TRACKING_URI_OVERRIDE", None)
+        with pytest.raises(ValueError, match="unknown scenario"):
+            runner.run(
+                _StubConfig(),
+                base_url="http://unused",
+                names=["nonsense"],
+                live=False,
+                tracking_uri="http://only-during-the-run:5000",
+            )
+        assert config_module._TRACKING_URI_OVERRIDE is None
+
+    def test_configuration_is_not_overridden_by_mlflows_own_side_effect(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """mlflow.set_tracking_uri writes MLFLOW_TRACKING_URI into the process.
+
+        Reading that variable live made the first MLflow call anywhere the
+        tracking URI for every Config built afterwards. A configured store must
+        survive our own dependency writing to the environment behind us.
+        """
+        import mlflow
+
+        from ml_platform import config as config_module
+
+        monkeypatch.setattr(config_module, "_TRACKING_URI_OVERRIDE", None)
+        configured = config_module.Config(
+            raw={"tracking": {"backend_uri": "http://configured:5000"}}, environment="test"
+        )
+        mlflow.set_tracking_uri("sqlite:///somewhere-else.db")
+        assert os.environ[ENV_TRACKING_URI] == "sqlite:///somewhere-else.db"
+        assert configured.tracking_uri == "http://configured:5000"
 
     def test_every_live_scenario_names_a_restore_action(self) -> None:
         """A scenario whose recovery_action is empty never said how to undo it."""
