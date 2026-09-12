@@ -350,6 +350,30 @@ stock `seldonio/mlserver` runtime cannot satisfy. It reads the artifact from the
 tracking server's volume at the path the registry records for the promoted
 version. See [docs/kserve.md](docs/kserve.md).
 
+## Observability
+
+```bash
+kubectl apply -k k8s/monitoring
+kubectl -n ml-platform port-forward svc/grafana 3000:3000 &
+```
+
+Both serving tiers expose Prometheus metrics and export OpenTelemetry traces.
+Grafana opens onto a provisioned dashboard with Prometheus already wired in, so
+a fresh cluster needs no clicking. Jaeger receives OTLP directly -- there is no
+collector in between, because with one producer and one backend it would add a
+hop and a failure mode and nothing else.
+
+A `/predict` trace crosses both tiers in one trace, because the outgoing HTTP
+client and the model tier's server are both instrumented and `traceparent`
+survives the hop.
+
+The metrics are the operational signals [ADR-003](docs/decisions/ADR-003-promotion-strategy.md)
+draws rollback authority from: request rate, errors, latency, upstream timeouts
+and serving health. Accuracy is deliberately absent -- it arrives years late and
+belongs to a different clock. Every label is drawn from a fixed set, and the
+route label is a template rather than a path, so a thousand distinct URLs are one
+series and not a thousand. See [docs/observability.md](docs/observability.md).
+
 ## Design decisions worth knowing
 
 **The label is a fixed 60-month horizon, not "did it eventually default".** The
@@ -390,6 +414,7 @@ reproducibility check compares that hash exactly.
 | [docs/ci.md](docs/ci.md) | What CI checks, how to run those checks locally, and what it cannot test yet |
 | [docs/kubernetes.md](docs/kubernetes.md) | The cluster architecture, the tracking server it needed, and the deploy runbook |
 | [docs/kserve.md](docs/kserve.md) | The two serving tiers, the runtime choice, and the KServe install |
+| [docs/observability.md](docs/observability.md) | Metrics, the dashboard, tracing, and what is deliberately not measured |
 | [ADR-001](docs/decisions/ADR-001-model-choice.md) | Dataset, label and model family |
 | [ADR-002](docs/decisions/ADR-002-serving.md) | Why KServe is the only serving path |
 | [ADR-003](docs/decisions/ADR-003-promotion-strategy.md) | Promotion gates, drift, rollback |
@@ -410,7 +435,8 @@ reproducibility check compares that hash exactly.
 | M9 CI/CD | Complete, GitHub Actions: static checks, tests, reproduction, image build |
 | M10 Kubernetes | Complete, API and an MLflow tracking server, with artifacts served over HTTP |
 | M11 KServe serving | Complete, KServe owns the model tier; FastAPI is the application tier |
-| M12 to M16 | Planned |
+| M12 observability | Complete, Prometheus, Grafana, OpenTelemetry and Jaeger across both tiers |
+| M13 to M16 | Planned |
 
 Built milestone by milestone, each verified by running it.
 

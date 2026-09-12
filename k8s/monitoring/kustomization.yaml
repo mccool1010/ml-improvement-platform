@@ -1,0 +1,24 @@
+# The observability stack. Applied after k8s/base and k8s/kserve:
+#
+#     kubectl apply -k k8s/base        # namespace, tracking server, application tier
+#     kubectl apply -k k8s/kserve      # the model tier
+#     kubectl apply -k k8s/monitoring  # metrics, dashboards, traces
+#
+# Separate from the others because it is optional: the platform serves correctly
+# with none of this running, and that is a property worth being able to test.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ml-platform
+
+resources:
+  - 40-jaeger.yaml
+  - 41-prometheus-rbac.yaml
+  - 42-prometheus.yaml
+  - 43-grafana-dashboard.yaml
+  - 44-grafana.yaml
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: ml-platform

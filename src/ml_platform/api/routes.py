@@ -25,6 +25,15 @@ from ml_platform.api.schemas import (
     PredictionResponse,
     ReadinessResponse,
 )
+from ml_platform.observability import API_SERVICE
+from ml_platform.observability.metrics import (
+    OUTCOME_ERROR,
+    OUTCOME_SUCCESS,
+    OUTCOME_UNAVAILABLE,
+    observe_prediction,
+    set_model_ready,
+)
+from ml_platform.observability.tracing import add_span_attributes
 from ml_platform.serving.client import PredictorError
 
 LOGGER = logging.getLogger(__name__)
@@ -82,6 +91,7 @@ def ready(request: Request, response: Response) -> ReadinessResponse:
     """
     service = _service(request)
     ready_now, detail = service.readiness()
+    set_model_ready(API_SERVICE, ready_now)
     if not ready_now:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return ReadinessResponse(
@@ -130,6 +140,7 @@ def predict(request: Request, payload: PredictionRequest) -> PredictionResponse:
     try:
         probabilities = model.predict(frame)
     except PredictorError as exc:
+        observe_prediction(API_SERVICE, OUTCOME_UNAVAILABLE)
         # The model tier is unreachable or refused. The caller's request was
         # fine, so this is not 422: blaming a valid request for a dependency
         # failure sends the client looking in the wrong place, and a retry of
@@ -140,6 +151,7 @@ def predict(request: Request, payload: PredictionRequest) -> PredictionResponse:
             detail=f"the model tier could not be reached: {exc}",
         ) from exc
     except Exception as exc:
+        observe_prediction(API_SERVICE, OUTCOME_ERROR)
         LOGGER.warning("scoring failed", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -147,14 +159,29 @@ def predict(request: Request, payload: PredictionRequest) -> PredictionResponse:
         ) from exc
 
     threshold = model.decision_threshold
-    return PredictionResponse(
-        predictions=[
-            Prediction(
-                default_probability=round(probability, 6),
-                flagged=probability >= threshold,
-                threshold=threshold,
-            )
-            for probability in probabilities
-        ],
-        model=_model_info(service),
+    predictions = [
+        Prediction(
+            default_probability=round(probability, 6),
+            flagged=probability >= threshold,
+            threshold=threshold,
+        )
+        for probability in probabilities
+    ]
+
+    observe_prediction(
+        API_SERVICE,
+        OUTCOME_SUCCESS,
+        scored=len(predictions),
+        flagged=sum(1 for p in predictions if p.flagged),
     )
+    # Counts and identity only. The applications themselves are never put on a
+    # span: what someone borrowed is not telemetry.
+    add_span_attributes(
+        **{
+            "ml.batch.size": len(predictions),
+            "ml.model.version": model.version,
+            "ml.model.served_by": model.served_by,
+        }
+    )
+
+    return PredictionResponse(predictions=predictions, model=_model_info(service))

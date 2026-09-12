@@ -1,0 +1,42 @@
+# Prometheus discovers what to scrape by asking the API server which pods exist,
+# so it needs read access to do that. Read-only, and narrowed to the three object
+# kinds the scrape config actually uses -- a scraper has no business being able
+# to change anything in the cluster.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: ml-platform
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: ml-platform
+---
+# ClusterRole rather than Role: Kubernetes service discovery watches at the
+# cluster scope even when the scrape config filters to one namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ml-platform-prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: ml-platform
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ml-platform-prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: ml-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ml-platform-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: ml-platform

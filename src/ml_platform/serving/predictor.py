@@ -31,6 +31,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
+from ml_platform.observability import PREDICTOR_SERVICE, metrics, tracing
 from ml_platform.serving.scoring import DEFAULT_FEATURE_SET, instances_to_frame, score
 
 LOGGER = logging.getLogger(__name__)
@@ -108,6 +109,7 @@ def create_app(state: ModelState | None = None, *, load_on_startup: bool = True)
         if load_on_startup:
             model_state.load()
         app.state.model = model_state
+        metrics.set_model_ready(PREDICTOR_SERVICE, model_state.ready)
         yield
 
     app = FastAPI(
@@ -171,8 +173,19 @@ def create_app(state: ModelState | None = None, *, load_on_startup: bool = True)
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, f"the instances could not be scored: {exc}"
             ) from exc
+        # Bounded, non-sensitive facts only. The applications themselves never
+        # go into a span: a trace backend is not the place for someone's loan.
+        tracing.add_span_attributes(
+            **{
+                "ml.model.name": held.name,
+                "ml.model.feature_set": held.feature_set,
+                "ml.batch.size": len(payload.instances),
+            }
+        )
         return PredictResponse(predictions=probabilities)
 
+    metrics.install(app, PREDICTOR_SERVICE)
+    tracing.configure(app, PREDICTOR_SERVICE)
     return app
 
 

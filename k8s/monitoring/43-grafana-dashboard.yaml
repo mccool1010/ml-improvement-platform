@@ -1,0 +1,199 @@
+# The dashboard, as a provisioned file rather than something clicked together.
+#
+# A dashboard that exists only in Grafana's database is lost with the pod and
+# cannot be reviewed in a diff. This one is applied with everything else, so a
+# fresh cluster comes up with it already there.
+#
+# The panels answer, in order: how much traffic, how much of it failed, how slow,
+# what the predictions did, and how the model tier behaved. Every query is on the
+# metrics in ml_platform.observability.metrics.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-ml-platform
+  namespace: ml-platform
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: ml-platform
+data:
+  ml-platform.json: |
+    {
+      "uid": "ml-platform-serving",
+      "title": "ML platform - serving",
+      "tags": ["ml-platform"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "time": { "from": "now-30m", "to": "now" },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Model ready",
+          "id": 1,
+          "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                { "type": "value", "options": { "0": { "text": "NOT READY", "color": "red" },
+                                                 "1": { "text": "READY", "color": "green" } } }
+              ],
+              "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null } ] }
+            }
+          },
+          "targets": [
+            { "refId": "A", "expr": "max(ml_platform_model_ready{service=\"inference-api\"})",
+              "legendFormat": "ready" }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Served model version",
+          "id": 2,
+          "gridPos": { "h": 4, "w": 8, "x": 4, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": { "textMode": "name", "colorMode": "none" },
+          "targets": [
+            { "refId": "A", "expr": "ml_platform_model_info",
+              "legendFormat": "{{model_name}} v{{version}} @{{alias}} ({{served_by}})" }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Requests / sec",
+          "id": 3,
+          "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 } },
+          "targets": [
+            { "refId": "A",
+              "expr": "sum(rate(ml_platform_http_requests_total{service=\"inference-api\"}[1m]))",
+              "legendFormat": "total" }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Error ratio (5m)",
+          "id": 4,
+          "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "decimals": 3,
+              "thresholds": { "mode": "absolute", "steps": [
+                { "color": "green", "value": null },
+                { "color": "orange", "value": 0.01 },
+                { "color": "red", "value": 0.05 } ] }
+            }
+          },
+          "targets": [
+            { "refId": "A",
+              "expr": "sum(rate(ml_platform_http_request_errors_total{service=\"inference-api\"}[5m])) / clamp_min(sum(rate(ml_platform_http_requests_total{service=\"inference-api\"}[5m])), 0.001)",
+              "legendFormat": "errors" }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Request rate by route",
+          "id": 5,
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "reqps" } },
+          "targets": [
+            { "refId": "A",
+              "expr": "sum by (route) (rate(ml_platform_http_requests_total{service=\"inference-api\"}[1m]))",
+              "legendFormat": "{{route}}" }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Errors by status class",
+          "id": 6,
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "reqps" } },
+          "targets": [
+            { "refId": "A",
+              "expr": "sum by (status_class, route) (rate(ml_platform_http_request_errors_total{service=\"inference-api\"}[1m]))",
+              "legendFormat": "{{status_class}} {{route}}" }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Request latency (seconds)",
+          "id": 7,
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "s" } },
+          "targets": [
+            { "refId": "A",
+              "expr": "histogram_quantile(0.50, sum by (le) (rate(ml_platform_http_request_duration_seconds_bucket{service=\"inference-api\",route=\"/predict\"}[5m])))",
+              "legendFormat": "p50 /predict" },
+            { "refId": "B",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(ml_platform_http_request_duration_seconds_bucket{service=\"inference-api\",route=\"/predict\"}[5m])))",
+              "legendFormat": "p95 /predict" },
+            { "refId": "C",
+              "expr": "histogram_quantile(0.99, sum by (le) (rate(ml_platform_http_request_duration_seconds_bucket{service=\"inference-api\",route=\"/predict\"}[5m])))",
+              "legendFormat": "p99 /predict" }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Model tier latency, measured by the caller (seconds)",
+          "id": 8,
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "s" } },
+          "targets": [
+            { "refId": "A",
+              "expr": "histogram_quantile(0.50, sum by (le) (rate(ml_platform_model_tier_duration_seconds_bucket[5m])))",
+              "legendFormat": "p50 KServe" },
+            { "refId": "B",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(ml_platform_model_tier_duration_seconds_bucket[5m])))",
+              "legendFormat": "p95 KServe" }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Prediction outcomes",
+          "id": 9,
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 20 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "reqps" } },
+          "targets": [
+            { "refId": "A",
+              "expr": "sum by (outcome) (rate(ml_platform_prediction_requests_total[1m]))",
+              "legendFormat": "{{outcome}}" }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Applications scored and flagged",
+          "id": 10,
+          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 20 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "short" } },
+          "targets": [
+            { "refId": "A", "expr": "sum(rate(ml_platform_applications_scored_total[1m]))",
+              "legendFormat": "scored / sec" },
+            { "refId": "B", "expr": "sum(rate(ml_platform_applications_flagged_total[1m]))",
+              "legendFormat": "flagged / sec" }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Model tier outcomes (upstream errors and timeouts)",
+          "id": 11,
+          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 20 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "reqps" } },
+          "targets": [
+            { "refId": "A",
+              "expr": "sum by (outcome) (rate(ml_platform_model_tier_requests_total[1m]))",
+              "legendFormat": "{{outcome}}" }
+          ]
+        }
+      ]
+    }

@@ -40,6 +40,14 @@ metadata:
     ml-platform.io/platform-run-id: candidate-20260906T175308Z
 spec:
   predictor:
+    # KServe copies these onto the pod it creates. That is the only way to
+    # annotate a Deployment this repository does not write, and it is how the
+    # model tier ends up scraped and traced alongside the application tier.
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8080"
+      prometheus.io/path: /metrics
+
     # One replica. Autoscaling the model tier is not this milestone's question,
     # and a second replica would only double the memory for no served benefit.
     minReplicas: 1
@@ -50,6 +58,11 @@ spec:
         version: "3"
       # Named explicitly; the runtime does not auto-select.
       runtime: mlflow-lockfile-runtime
+      env:
+        # The model tier exports traces too, so a span from the application tier
+        # has a child showing where the time inside the model actually went.
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://jaeger:4318
       storageUri: pvc://mlflow-store/artifacts/1/5066e44b4e134aff91e703d7daaf6ca3/artifacts/model
       resources:
         requests:

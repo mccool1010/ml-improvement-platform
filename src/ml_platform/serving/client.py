@@ -13,8 +13,17 @@ the same request, and nobody could tell afterwards which one did.
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
+from ml_platform.observability import API_SERVICE
+from ml_platform.observability.metrics import (
+    OUTCOME_ERROR,
+    OUTCOME_INVALID,
+    OUTCOME_SUCCESS,
+    OUTCOME_UNAVAILABLE,
+    observe_model_tier,
+)
 from ml_platform.serving.scoring import frame_to_instances
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -42,6 +51,9 @@ class RemotePredictor:
         self.url = url.rstrip("/")
         self.model_name = model_name
         self.timeout = timeout
+        #: Which service records the model-tier metrics. The caller is the
+        #: application tier, so its own name labels them.
+        self.metrics_service = API_SERVICE
         self._client: Any | None = None
 
     def _http(self) -> Any:
@@ -80,22 +92,37 @@ class RemotePredictor:
         return True, None
 
     def predict(self, frame: pd.DataFrame) -> list[float]:
-        """Probabilities for a register-shaped frame, from the model tier."""
+        """Probabilities for a register-shaped frame, from the model tier.
+
+        Timed and counted from this side deliberately. The model tier measures
+        its own latency too, but only the caller can see queueing, connection
+        setup and the network between them -- and a timeout is invisible to the
+        service that never answered.
+        """
         instances = frame_to_instances(frame)
+        started = time.perf_counter()
+
         try:
             response = self._http().post(self.predict_url, json={"instances": instances})
         except Exception as exc:
+            observe_model_tier(
+                self.metrics_service, OUTCOME_UNAVAILABLE, time.perf_counter() - started
+            )
             raise PredictorError(f"could not reach the predictor at {self.url}: {exc}") from exc
 
+        elapsed = time.perf_counter() - started
         if response.status_code != 200:
+            observe_model_tier(self.metrics_service, OUTCOME_ERROR, elapsed)
             raise PredictorError(
                 f"the predictor answered {response.status_code}: {response.text[:300]}"
             )
         predictions = response.json().get("predictions")
         if not isinstance(predictions, list) or len(predictions) != len(instances):
+            observe_model_tier(self.metrics_service, OUTCOME_INVALID, elapsed)
             raise PredictorError(
                 f"the predictor returned {predictions!r} for {len(instances)} instance(s)"
             )
+        observe_model_tier(self.metrics_service, OUTCOME_SUCCESS, elapsed)
         return [float(p) for p in predictions]
 
 

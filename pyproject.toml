@@ -24,6 +24,14 @@ dependencies = [
     # M11: the application tier calls the KServe model tier over HTTP, so a
     # client is a runtime dependency now, not a test one.
     "httpx>=0.27",
+    # M12 observability. The OpenTelemetry API and SDK already arrive with
+    # mlflow; these add the exporter and the two instrumentations that matter
+    # for this architecture: the server that receives a request, and the client
+    # that calls the model tier.
+    "prometheus-client>=0.21",
+    "opentelemetry-exporter-otlp-proto-http>=1.27",
+    "opentelemetry-instrumentation-fastapi>=0.48b0",
+    "opentelemetry-instrumentation-httpx>=0.48b0",
 ]
 
 [project.optional-dependencies]

@@ -31,6 +31,9 @@ ENV_TRACKING_URI = "MLFLOW_TRACKING_URI"
 #: itself. One switch, so the two cannot be configured into contradiction.
 ENV_PREDICTOR_URL = "ML_PLATFORM_PREDICTOR_URL"
 
+#: OTLP trace collector. OpenTelemetry's own standard variable name.
+ENV_OTLP_ENDPOINT = "OTEL_EXPORTER_OTLP_ENDPOINT"
+
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Recursively merge ``override`` into ``base`` without mutating either."""
@@ -205,6 +208,23 @@ class Config:
     @property
     def predictor_timeout_seconds(self) -> float:
         return float(self._serving.get("predictor_timeout_seconds", 10.0))
+
+    # --- observability (M12) ----------------------------------------------
+    @property
+    def otlp_endpoint(self) -> str | None:
+        """OTLP/HTTP collector for traces, or ``None`` to run without tracing.
+
+        Named for OpenTelemetry's own convention, so a deployment sets the
+        variable the ecosystem already uses. Absent -- locally and under test --
+        there is no collector to export to and tracing stays off, which is the
+        right default rather than a degraded one.
+        """
+        configured = os.environ.get(ENV_OTLP_ENDPOINT) or self._observability.get("otlp_endpoint")
+        return str(configured) if configured else None
+
+    @property
+    def _observability(self) -> dict[str, Any]:
+        return dict(self.raw.get("observability") or {})
 
     # --- promotion (M6) ---------------------------------------------------
     @property

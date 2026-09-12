@@ -99,6 +99,13 @@ serving:
   predictor_model_name: sba-loan-default
   predictor_timeout_seconds: 10.0
 
+observability:
+  # Where traces go. Null means tracing is off, which is how the service runs on
+  # a laptop and under test: there is no collector to export to. In Kubernetes
+  # the deployment sets OTEL_EXPORTER_OTLP_ENDPOINT to the Jaeger Service.
+  # Metrics are not conditional -- /metrics costs nothing when nobody scrapes it.
+  otlp_endpoint: null
+
 promotion:
   # Promotion is decided on the validation split. The test split is held-out
   # evidence; a threshold chosen against it, or a promotion justified by it,

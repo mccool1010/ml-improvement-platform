@@ -30,6 +30,12 @@ spec:
         app.kubernetes.io/name: inference-api
         app.kubernetes.io/component: api
         app.kubernetes.io/part-of: ml-platform
+      annotations:
+        # Prometheus discovers by annotation rather than by a list in its own
+        # config, so a service is scraped because it says so here.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
     spec:
       securityContext:
         runAsNonRoot: true
@@ -39,7 +45,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: ml-platform-api:m11
+          image: ml-platform-api:m12
           # The image is built locally and never pushed, so a pull would fail.
           imagePullPolicy: IfNotPresent
           ports:

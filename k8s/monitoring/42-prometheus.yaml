@@ -1,0 +1,159 @@
+# Prometheus.
+#
+# Discovery is annotation-driven: a pod is scraped because it says
+# `prometheus.io/scrape: "true"`, not because this file lists it. That keeps the
+# scrape config from being a second place to remember a service, and means the
+# model tier -- whose Deployment is created by the KServe controller rather than
+# by a manifest here -- is picked up by the annotation KServe copies from the
+# InferenceService.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: ml-platform
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: ml-platform
+data:
+  prometheus.yml: |
+    global:
+      # Fast enough that a burst of traffic is visible while someone is still
+      # looking at the dashboard, which matters more here than storage cost.
+      scrape_interval: 10s
+      evaluation_interval: 30s
+      external_labels:
+        cluster: docker-desktop
+
+    scrape_configs:
+      - job_name: ml-platform-pods
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [ml-platform]
+        relabel_configs:
+          # Opt in, by annotation.
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: "true"
+          # Respect a pod's own path and port if it declares them.
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels:
+              [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+          # Labels worth having on every series. Deliberately not the pod's IP
+          # or uid: a pod name already identifies a replica, and the rest would
+          # add cardinality that churns on every restart.
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            action: replace
+            target_label: app
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: ml-platform
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/part-of: ml-platform
+spec:
+  replicas: 1
+  # One writer to one volume, as with the tracking server.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: prometheus
+        app.kubernetes.io/component: metrics
+        app.kubernetes.io/part-of: ml-platform
+    spec:
+      serviceAccountName: prometheus
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v3.1.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            # Short retention. This is a development cluster and the interesting
+            # window is the traffic someone just generated.
+            - --storage.tsdb.retention.time=6h
+            - --web.enable-lifecycle
+          ports:
+            - name: http
+              containerPort: 9090
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            periodSeconds: 30
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: data
+              mountPath: /prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        # emptyDir, not a claim: six hours of development metrics are not worth
+        # persisting, and pretending otherwise would be the misleading choice.
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: ml-platform
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/part-of: ml-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http

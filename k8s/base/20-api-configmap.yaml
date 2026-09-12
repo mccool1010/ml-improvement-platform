@@ -42,3 +42,9 @@ data:
   # The address is the Service KServe creates for the InferenceService, resolved
   # by cluster DNS. Nothing here names a pod or an address.
   ML_PLATFORM_PREDICTOR_URL: http://sba-loan-default-predictor
+
+  # Traces. OpenTelemetry's own variable name, pointed at the Jaeger Service by
+  # cluster DNS. Jaeger accepts OTLP directly, so there is no collector between
+  # them. Unset -- locally, and under test -- tracing is simply off; metrics are
+  # unaffected either way, because /metrics needs nothing to export to.
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
