@@ -371,6 +371,18 @@ class _Mlflow:
             self.error = f"MLflow query failed: {type(exc).__name__}"
             return []
 
+    def training_runs(self, limit: int = 200) -> list[Any]:
+        """Runs that produced a model, however they were produced.
+
+        Training runs carry ``model_name`` and no ``run_type``; retraining
+        candidates carry both. Filtering on ``run_type = 'training'`` matched
+        neither, which made the unregistered-candidate count zero and hid every
+        training event -- the opposite of the honest denominator it was meant
+        to be. Presence of ``model_name`` is what actually marks a run as having
+        produced a model, so that is what is asked.
+        """
+        return [run for run in self.runs(limit=limit) if run.data.tags.get("model_name")]
+
     def versions(self) -> list[Any]:
         client = self.client()
         if client is None:
@@ -631,7 +643,7 @@ def promotions(request: Request) -> PromotionHistory:
         except Exception:
             production_version = None
 
-    trained = reader.runs(run_type="training", limit=100)
+    trained = reader.training_runs()
     registered_runs = {s.mlflow_run_id for s in summaries}
     return PromotionHistory(
         available=True,
@@ -883,7 +895,8 @@ def events(request: Request, limit: int = 12) -> list[PlatformEvent]:
 
     for run in reader.runs(limit=60):
         tags = dict(run.data.tags)
-        kind = tags.get("run_type", "training")
+        # Training runs carry no run_type; `model_name` is what marks them.
+        kind = tags.get("run_type", "")
         at = _timestamp(run)
         if at is None:
             continue
@@ -919,9 +932,9 @@ def events(request: Request, limit: int = 12) -> list[PlatformEvent]:
                     outcome=tags.get("canary_decision"),
                 )
             )
-        elif kind == "training":
+        elif tags.get("model_name"):
             version = registered_runs.get(run.info.run_id)
-            name = tags.get("model_name") or tags.get("mlflow.runName") or "candidate"
+            name = tags["model_name"]
             collected.append(
                 PlatformEvent(
                     at=at,
