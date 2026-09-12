@@ -422,6 +422,28 @@ passing all seven checks and moving production to v2; an unreachable candidate
 producing 92 real 503s and leaving production at v1; and a healthy tier with a
 19.6% error rate also leaving production at v1. See [docs/canary.md](docs/canary.md).
 
+## Failure engineering
+
+```bash
+python -m ml_platform failure --base-url http://localhost:8080     --tracking-uri http://localhost:5000
+```
+
+Six scenarios break something real and check one named property each: the model
+tier, MLflow, a canary, telemetry, a restart, and a deliberately bad candidate.
+Injection is `kubectl scale`; every injector has a matching restore in a
+`finally`, because a harness that can leave the cluster broken is worse than the
+failures it tests for.
+
+The idea running through the invariants is that **failing closed is success**. A
+503 because the model tier is gone is correct behaviour; a 200 carrying a
+fabricated score is not, and is far harder to notice. Live evidence: the model
+tier down gave `[503]` with zero scores; a dead canary failed 7 of 20 requests
+and 0 after rollback; telemetry down served 12 of 12; a restart returned the same
+model scoring the same input identically. The production alias was v1 throughout.
+
+See [docs/failure.md](docs/failure.md), which also records two defects the
+harness found in *itself*.
+
 ## Design decisions worth knowing
 
 **The label is a fixed 60-month horizon, not "did it eventually default".** The
@@ -465,6 +487,7 @@ reproducibility check compares that hash exactly.
 | [docs/observability.md](docs/observability.md) | Metrics, the dashboard, tracing, and what is deliberately not measured |
 | [docs/drift.md](docs/drift.md) | Drift methodology, the controlled scenario, and which labels retraining may use |
 | [docs/canary.md](docs/canary.md) | Traffic splitting, the rollback signals, and why the alias moves last |
+| [docs/failure.md](docs/failure.md) | The six failure scenarios, the invariants they prove, and the blast radius of each |
 | [ADR-001](docs/decisions/ADR-001-model-choice.md) | Dataset, label and model family |
 | [ADR-002](docs/decisions/ADR-002-serving.md) | Why KServe is the only serving path |
 | [ADR-003](docs/decisions/ADR-003-promotion-strategy.md) | Promotion gates, drift, rollback |
@@ -488,7 +511,8 @@ reproducibility check compares that hash exactly.
 | M12 observability | Complete, Prometheus, Grafana, OpenTelemetry and Jaeger across both tiers |
 | M13 drift and retraining | Complete, drift triggers retraining; the M6 gates still decide |
 | M14 canary and rollback | Complete, app-tier traffic split; the alias moves only after the canary passes |
-| M15 to M16 | Planned |
+| M15 failure engineering | Complete, six scenarios; five break real components |
+| M16 | Planned |
 
 Built milestone by milestone, each verified by running it.
 

@@ -46,6 +46,8 @@ data/processed/*
 /artifacts/benchmarks/retrain-*.json
 # M14 writes one canary decision report per evaluation, same churn.
 /artifacts/benchmarks/canary-*.json
+# M15 writes one evidence report per failure run, same churn as the others.
+/artifacts/reports/failure/
 # Model binaries are not: they are large and rebuildable from a tracked record.
 
 # Local env / editor

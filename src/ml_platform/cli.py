@@ -329,6 +329,28 @@ def command_canary(args: argparse.Namespace) -> int:
     return 0 if not decision.should_rollback else 1
 
 
+def command_failure(args: argparse.Namespace) -> int:
+    """Inject the failure scenarios and write the evidence report."""
+    config = _bootstrap(args.environment)
+    from ml_platform.failure.report import FailureReport
+    from ml_platform.failure.runner import describe, run
+    from ml_platform.paths import ensure_dir
+
+    report: FailureReport = run(
+        config,
+        base_url=args.base_url,
+        names=args.scenario or None,
+        namespace=args.namespace,
+        live=not args.offline,
+        tracking_uri=args.tracking_uri,
+    )
+    print()
+    print(describe(report))
+    destination = report.write(ensure_dir(config.report_dir) / "failure")
+    print(f"evidence written to {destination}")
+    return 0 if report.passed else 1
+
+
 def command_serve(args: argparse.Namespace) -> int:
     """Serve the promoted production model over HTTP."""
     _bootstrap(args.environment)
@@ -432,6 +454,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="decide and report without changing live traffic (dry run)",
     )
     canary.set_defaults(handler=command_canary)
+
+    failure = subparsers.add_parser(
+        "failure", help="inject failure scenarios and record what they proved"
+    )
+    failure.add_argument(
+        "--scenario",
+        action="append",
+        default=None,
+        help="scenario to run; repeatable. Default: all of them",
+    )
+    failure.add_argument(
+        "--base-url",
+        default="http://localhost:8080",
+        help="where the inference API is reachable, usually a port-forward",
+    )
+    failure.add_argument("--namespace", default="ml-platform")
+    failure.add_argument(
+        "--tracking-uri",
+        default=None,
+        help="the cluster's MLflow, usually a port-forward. Without it the registry "
+        "checks read the local store and would not notice the cluster's registry failing",
+    )
+    failure.add_argument(
+        "--offline",
+        action="store_true",
+        help="skip every scenario that would break a real component",
+    )
+    failure.set_defaults(handler=command_failure)
 
     serve = subparsers.add_parser("serve", help="serve the production model over HTTP")
     serve.add_argument("--host", default="127.0.0.1")
