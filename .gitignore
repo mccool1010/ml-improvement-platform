@@ -58,3 +58,4 @@ data/processed/*
 .vscode/
 .DS_Store
 
+/build/

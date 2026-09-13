@@ -110,6 +110,13 @@ COPY --chown=appuser:appuser deploy/hosted/build_store.py /app/build_store.py
 
 RUN python /app/build_store.py /app/bundle /app/mlflow.db /app/mlartifacts     && rm -rf /app/bundle /app/build_store.py
 
+# Some hosts ignore USER and run the container under their own uid (Hugging Face
+# Spaces uses 1000). SQLite needs write access to the store and its directory,
+# so the runtime paths are opened to whichever uid the host chooses.
+USER root
+RUN chmod -R a+rwX /app/mlflow.db /app/mlartifacts /app/artifacts && chmod a+rwx /app
+USER appuser
+
 ENV MLFLOW_TRACKING_URI=sqlite:////app/mlflow.db
 
 # Hosts that inject PORT (Render, Hugging Face) are honoured; 8000 otherwise.
