@@ -231,16 +231,17 @@ every metric.
 | Split mismatches | none |
 
 Recorded environment: CPython 3.12.14, Windows AMD64, pandas 3.0.5, numpy 2.5.2,
-scikit-learn 1.9.0, scipy 1.18.1, seed 42, one thread, `quicksort` row ordering.
+scikit-learn 1.9.0, scipy 1.18.1, pandera 0.33.1, joblib 1.6.0, seed 42, one
+thread, `quicksort` row ordering.
 
-Source: `artifacts/benchmarks/reproducibility-baseline-20260906T173242Z.json`.
+Provenance: git `4055124be9d9`, **`git_dirty: false`**, lockfile
+`7e852228999ea8b3`, dataset `0359128a0b75`.
 
-**Caveat:** that baseline was itself recorded with `git_dirty: true`. The 48/48
-match is real and was verified on this machine; the provenance tying it to a
-specific committed revision is not, which is exactly what the reproducibility
-*gate* would reject. A cross-platform run has not been attempted — that is what
-the `portable` profile (5e-4 on ranking metrics, 2e-3 on threshold-derived ones)
-exists for, and it remains untested.
+Source: `artifacts/benchmarks/reproducibility-baseline-20260912T191935Z.json`.
+
+A cross-platform run has not been attempted. That is what the `portable` profile
+(5e-4 on ranking metrics, 2e-3 on threshold-derived ones) exists for, and it
+remains untested — see the CI note below.
 
 ---
 

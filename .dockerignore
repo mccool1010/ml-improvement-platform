@@ -41,6 +41,13 @@ htmlcov/
 .vscode/
 .DS_Store
 
+# The dashboard is compiled in its own build stage from source plus the
+# lockfile. A local node_modules or dist must never enter the build context:
+# node_modules is large and platform-specific, and a stale dist would be copied
+# over the freshly built one.
+dashboard/node_modules/
+dashboard/dist/
+
 # The image builds from the Dockerfile; it does not need a copy of itself.
 docker/
 Makefile

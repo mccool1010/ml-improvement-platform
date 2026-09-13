@@ -48,3 +48,20 @@ data:
   # them. Unset -- locally, and under test -- tracing is simply off; metrics are
   # unaffected either way, because /metrics needs nothing to export to.
   OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+
+  # Where the dashboard's read-only aggregation reaches the observability tools,
+  # all by cluster DNS. Prometheus is actually queried for the six summary
+  # numbers; Grafana and Jaeger are links, because they remain the observability
+  # systems and the dashboard does not reimplement either.
+  #
+  # Unset -- locally, and under test -- /platform/observability reports itself
+  # unavailable and says why, rather than showing zeroes that would read as "no
+  # errors, instant responses" instead of "nothing was measured".
+  #
+  # The Grafana and Jaeger addresses are what a browser must reach, so they are
+  # the operator's port-forwards rather than in-cluster DNS names: a link to
+  # http://grafana:3000 would resolve for the pod and not for the person
+  # clicking it.
+  ML_PLATFORM_PROMETHEUS_URL: http://prometheus:9090
+  ML_PLATFORM_GRAFANA_URL: http://localhost:3000
+  ML_PLATFORM_JAEGER_URL: http://localhost:16686

@@ -48,7 +48,7 @@ spec:
     - v1
   containers:
     - name: kserve-container
-      image: ml-platform-api:m14
+      image: ml-platform-api:m16
       imagePullPolicy: IfNotPresent
       command:
         - uvicorn

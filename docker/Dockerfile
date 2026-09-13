@@ -10,6 +10,26 @@
 #   - the MLflow store: mounted at run time, so the image is not tied to one
 #     registry and a promotion does not require a rebuild
 #   - tests, notebooks, docs, git history
+#   - node, npm and node_modules: the dashboard is compiled in its own stage
+#     and only the static bundle is carried forward
+
+# ---- dashboard -------------------------------------------------------------
+# Built here rather than on the developer's machine so the image is
+# self-contained: `docker build` alone produces a working /dashboard, with no
+# "remember to run npm first" precondition that would silently ship a stale
+# bundle or none at all.
+FROM node:22-slim AS dashboard
+
+WORKDIR /dashboard
+
+# npm ci installs exactly the committed lockfile, the same contract uv.lock
+# carries on the Python side.
+COPY dashboard/package.json dashboard/package-lock.json ./
+RUN npm ci
+
+COPY dashboard/tsconfig.json dashboard/vite.config.ts dashboard/index.html ./
+COPY dashboard/src/ ./src/
+RUN npm run build
 
 # ---- builder ---------------------------------------------------------------
 FROM python:3.12-slim-bookworm AS builder
@@ -45,6 +65,11 @@ WORKDIR /app
 COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
 COPY --chown=appuser:appuser src/ ./src/
 COPY --chown=appuser:appuser configs/ ./configs/
+
+# The static bundle only. The API mounts it at /dashboard when it is present
+# and skips the mount when it is not, so this COPY is the only thing that
+# decides whether the image serves a dashboard.
+COPY --from=dashboard --chown=appuser:appuser /dashboard/dist/ ./dashboard/dist/
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
