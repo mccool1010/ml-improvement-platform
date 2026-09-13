@@ -27,7 +27,7 @@ should a reader.
 | Feature set | `engineered` (119 features) |
 | Promoted over | `logistic_regression_baseline` |
 | Quality gates | 7 of 7 passed |
-| Git revision | `9ce91520b39840ea83e7b5c77a08572d188dd867` |
+| Git revision | `ca0a4cb382b30dcfd9943ad8f6a73a8b5a063b74` |
 | Dataset SHA-256 | `0359128a0b7599e83e4c2e4dcdd781d9121a765237f98d9f0ec1ab3e7c522548` |
 | Label | `default_within_60m`, 60-month horizon |
 
@@ -234,7 +234,7 @@ Recorded environment: CPython 3.12.14, Windows AMD64, pandas 3.0.5, numpy 2.5.2,
 scikit-learn 1.9.0, scipy 1.18.1, pandera 0.33.1, joblib 1.6.0, seed 42, one
 thread, `quicksort` row ordering.
 
-Provenance: git `4055124be9d9`, **`git_dirty: false`**, lockfile
+Provenance: git `b4731734fa3d`, **`git_dirty: false`**, lockfile
 `7e852228999ea8b3`, dataset `0359128a0b75`.
 
 Source: `artifacts/benchmarks/reproducibility-baseline-20260912T191935Z.json`.
