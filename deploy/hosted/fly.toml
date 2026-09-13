@@ -1,0 +1,27 @@
+# Fly.io config for the hosted demo. Machines stop when idle and start on the
+# next request, so the demo costs almost nothing between visits; the first
+# request after a quiet period takes a few seconds while the model loads.
+app = "sba-mlops-platform"
+
+[build]
+  dockerfile = "Dockerfile"
+primary_region = "bom"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "60s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1

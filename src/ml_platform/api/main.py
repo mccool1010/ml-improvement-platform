@@ -99,6 +99,15 @@ def _mount_dashboard(app: FastAPI) -> None:
     from fastapi.staticfiles import StaticFiles
 
     app.mount("/dashboard", StaticFiles(directory=str(dist), html=True), name="dashboard")
+
+    from fastapi.responses import RedirectResponse
+
+    # A visitor opening the bare address should land on something readable. Only
+    # registered when the dashboard exists, so `/` stays unrouted otherwise.
+    @app.get("/", include_in_schema=False)
+    def _root() -> RedirectResponse:
+        return RedirectResponse(url="/dashboard/")
+
     LOGGER.info("serving the dashboard from %s", dist)
 
 
