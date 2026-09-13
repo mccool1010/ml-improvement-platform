@@ -270,9 +270,9 @@ no chaos-engineering framework was added to run six failure scenarios.
 M0 through M16 are implemented. Against the real 682,421-row register: the
 production model is `sba-loan-default-classifier` v1 at 0.732 validation average
 precision, 7 of 7 gates passed; 48 of 48 metrics reproduce bit-exactly under the
-`strict` profile; 899 backend tests and 33 frontend tests pass; five failure
-scenarios have been run live against the cluster and every invariant held.
+`strict` profile, and bit-exactly again on Linux in CI; the backend and dashboard
+test suites pass in GitHub Actions; five failure scenarios have been run live
+against the cluster and every invariant held. A hosted demo runs at
+https://sba-mlops-platform.onrender.com.
 
-What is defined but not yet exercised: the GitHub Actions workflow, because this
-repository has no remote — CI has never run. Recorded numbers, caveats and
-limitations are in [evidence.md](evidence.md).
+Recorded numbers, caveats and limitations are in [evidence.md](evidence.md).

@@ -239,9 +239,15 @@ Provenance: git `b4731734fa3d`, **`git_dirty: false`**, lockfile
 
 Source: `artifacts/benchmarks/reproducibility-baseline-20260912T191935Z.json`.
 
-A cross-platform run has not been attempted. That is what the `portable` profile
-(5e-4 on ranking metrics, 2e-3 on threshold-derived ones) exists for, and it
-remains untested — see the CI note below.
+**Cross-platform, too.** CI reruns the reproduction on Ubuntu 24.04 under the
+`portable` profile (5e-4 on ranking metrics, 2e-3 on threshold-derived ones). On
+its [first run](https://github.com/mccool1010/ml-improvement-platform/actions/runs/34759178490) the tolerance was not needed:
+
+```
+[PASS] profile=portable: 48 metrics compared, 48 bit-exact, 0 out of tolerance, 0 split mismatches
+```
+
+Windows and Linux produced identical metrics.
 
 ---
 
@@ -286,11 +292,10 @@ Four jobs are defined in `.github/workflows/ci.yml`: lint/format/types, the test
 suite, a reproducibility run against the real register on the `portable` profile,
 and a Docker build with a smoke test.
 
-**CI has never run.** This repository has no remote, so the workflow is defined
-and unexercised. Everything reported above was run locally on Windows. That also
-means the `portable` tolerance profile — the one that exists for a rerun on
-different hardware — has never been exercised, because CI is the only place that
-would use it.
+Its [first run](https://github.com/mccool1010/ml-improvement-platform/actions/runs/34759178490) passed every job: 896 tests passed and 6 skipped (the
+`slow` tests that need the full register, which the reproduction job covers), the
+dashboard's tests and build, the image build and smoke test, and a bit-exact
+reproduction on Linux.
 
 Every failure invariant is tested in both directions — an invariant that cannot
 fail proves nothing. The gate and invariant catalogues served to the dashboard
@@ -323,9 +328,11 @@ one that has fewer features.
   and it is recorded rather than papered over — see [failure.md](failure.md).
 - **Single-node cluster on a laptop.** No multi-zone behaviour, no real load, no
   noisy neighbours. Latency numbers are indicative only.
-- **The `portable` reproducibility profile is untested, and CI has never run.**
-  The workflow is defined; the repository has no remote. Only same-platform
-  `strict` reproduction has been verified, on Windows.
+- **Two platforms, one machine each.** Reproduction is verified on Windows
+  locally and Linux in CI; macOS and other BLAS builds have not been tried.
+- **The hosted demo is not the cluster.** It serves the model in-process from a
+  rebuilt SQLite registry, with no KServe, Prometheus or MLflow server; the
+  cluster evidence above comes from Docker Desktop Kubernetes.
 - **The canary evaluator has never seen real canary traffic** — the one recorded
   decision was `hold` for insufficient requests. Its logic is tested; its
   judgement under load is not.

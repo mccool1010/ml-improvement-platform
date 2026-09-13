@@ -447,3 +447,43 @@ class TestTheCataloguesCannotGoStale:
                 "live-kubernetes" if scenario["scenario"] in LIVE_SCENARIOS else "controlled-double"
             )
             assert scenario["mode"] == expected, scenario["scenario"]
+
+
+class TestTheLatestRetrainingDecisionIsNotHidden:
+    def test_a_later_check_without_a_retrain_still_shows_the_last_decision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A newer drift check with no retrain of its own must not blank the most
+        recent retraining decision -- and must say which check that decision
+        belonged to, rather than implying the latest one caused it."""
+        from types import SimpleNamespace
+
+        from ml_platform.api import platform
+
+        def run(run_id: str, tags: dict[str, str], metrics: dict[str, float]) -> Any:
+            return SimpleNamespace(
+                info=SimpleNamespace(run_id=run_id, start_time=0),
+                data=SimpleNamespace(tags=tags, metrics=metrics, params={"threshold_psi": "0.1"}),
+            )
+
+        latest_check = run("d2", {"drift_decision": "retrain", "drift_event_id": "drift-new"}, {})
+        candidate = run(
+            "c1", {"drift_event_id": "drift-old"}, {"validation_average_precision": 0.7344}
+        )
+
+        def runs(_self: Any, *, run_type: str | None = None, limit: int = 25) -> list[Any]:
+            del limit
+            return {"drift_check": [latest_check], "retraining_candidate": [candidate]}.get(
+                run_type or "", []
+            )
+
+        monkeypatch.setattr(platform._Mlflow, "runs", runs)
+        monkeypatch.setattr(platform._Mlflow, "versions", lambda _self: [])
+        monkeypatch.setattr(platform._Mlflow, "client", lambda _self: None)
+
+        with TestClient(create_app(load_on_startup=False)) as client:
+            retraining = client.get("/platform/drift").json()["retraining"]
+        assert retraining["ran"] is True
+        assert retraining["linked_to_latest_check"] is False
+        assert retraining["triggered_by"] == "drift-old"
+        assert retraining["promoted"] is False

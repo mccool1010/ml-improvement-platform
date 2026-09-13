@@ -1,11 +1,49 @@
 # ML Improvement Platform
 
+[![CI](https://github.com/mccool1010/ml-improvement-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/mccool1010/ml-improvement-platform/actions/workflows/ci.yml)
+![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
+![Kubernetes](https://img.shields.io/badge/Kubernetes-KServe-326CE5?logo=kubernetes&logoColor=white)
+![MLflow](https://img.shields.io/badge/MLflow-registry-0194E2?logo=mlflow&logoColor=white)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+
+**Live demo: [sba-mlops-platform.onrender.com](https://sba-mlops-platform.onrender.com)** — the operator dashboard over the real
+production model and its recorded history. *Hosted on a free tier that sleeps
+when idle: the first visit can take up to a minute to wake.*
+
 A closed-loop ML platform that decides whether a newly trained model is genuinely
 better than the one in production, and promotes it only if it is.
 
 The ML task is a vehicle. The engineering is the point: reproducible training,
 automated evaluation, quality gates that can reject a candidate, safe promotion,
 drift detection, delayed-label evaluation, canary rollout and rollback.
+
+> **A worse or unsafe model must never automatically replace a working
+> production model.** Every part of the system exists to enforce that rule.
+
+## At a glance
+
+| | |
+|---|---|
+| **Problem** | Predict whether an SBA-guaranteed small-business loan charges off within 60 months, on the U.S. SBA national register (899,164 loans) |
+| **Production model** | Histogram gradient boosting, validation average precision **0.732** (baseline 0.131), ROC AUC 0.973, 7 of 7 quality gates passed |
+| **Headline result** | A drift-triggered retrain produced a *better* model (AP 0.7344 vs 0.7320) and the gates **rejected** it, because +0.0024 is inside the noise band. Production was untouched. |
+| **Reproducibility** | 48 of 48 metrics reproduce **bit-exactly**, on Windows locally and on Linux in CI |
+| **Serving** | FastAPI application tier in front of a KServe model tier on Kubernetes |
+| **Reliability** | Six failure scenarios against the live cluster, eight invariants, all held: *failing closed is success* |
+| **Tests** | ~900 backend tests, 36 dashboard tests and strict mypy, all run in [CI](https://github.com/mccool1010/ml-improvement-platform/actions/runs/34759178490) |
+
+### What I built
+
+- **Quality-gated promotion.** Seven blocking gates (improvement margin, absolute floor, ROC-AUC and recall regression, calibration, latency, reproducibility) decide on the validation split only. A failing candidate is never registered, and the production alias is the single source of truth.
+- **Reproducible training.** Pinned seeds, threads, sort algorithm and lockfile; every run records git revision, dataset checksum, row-order fingerprint and library versions, and `reproduce` fails the build on any deviation.
+- **Kubernetes and KServe serving.** An in-cluster MLflow tracking server with served artifacts, a custom serving runtime pinned to the project's own dependencies, and readiness that tells the truth about whether a promoted model is loaded.
+- **Observability.** Prometheus metrics with bounded label cardinality, a provisioned Grafana dashboard, and OpenTelemetry traces across both serving tiers into Jaeger. Telemetry can never fail a prediction.
+- **Drift and retraining.** PSI per feature against the training reference. Drift may *trigger* retraining but can never promote, reject or roll back anything, because realised performance needs labels that take five years to arrive.
+- **Canary and rollback.** Deterministic SHA-256 traffic splitting in the application tier (KServe's raw mode has no traffic-split primitive), rolled back on operational signals only, never on accuracy.
+- **Failure engineering.** Scenarios that scale real components to zero and check named invariants, such as *no request ever receives a fabricated prediction*.
+- **Operator dashboard.** React and TypeScript over a read-only aggregation API; unavailable data is shown as unavailable, never as a plausible zero.
+
+**Stack:** Python 3.12 · scikit-learn · pandas · Pandera · MLflow · Optuna · FastAPI · Docker · Kubernetes · KServe · Prometheus · Grafana · OpenTelemetry · Jaeger · React · TypeScript · Vite · GitHub Actions · uv · Render
 
 ```mermaid
 flowchart LR
@@ -306,9 +344,12 @@ no registry mounted; it cannot yet load a real promoted model, because the local
 MLflow store records absolute host paths. The reasoning, the local equivalents of
 every CI command, and that limitation in full are in [docs/ci.md](docs/ci.md).
 
-**The workflow has never executed.** This repository has no remote, so CI is
-defined and unexercised; every number quoted in this README was produced locally.
-The four jobs run locally with the commands in [docs/ci.md](docs/ci.md).
+A fifth job runs the dashboard's type-check, tests and production build.
+
+On its [first run](https://github.com/mccool1010/ml-improvement-platform/actions/runs/34759178490) every job passed, and the reproduction job reported
+`48 metrics compared, 48 bit-exact` on Linux: the same numbers the reference was
+locked with on Windows. Every job also runs locally with the commands in
+[docs/ci.md](docs/ci.md).
 
 ## Kubernetes
 
@@ -521,6 +562,45 @@ Those need Docker Desktop with Kubernetes enabled.
 
 Recorded results for every step above, with the caveats, are in
 [docs/evidence.md](docs/evidence.md).
+
+## Hosted demo
+
+**[sba-mlops-platform.onrender.com](https://sba-mlops-platform.onrender.com)**, deployed on Render from `deploy/hosted/Dockerfile` and
+redeployed automatically on every push to `main`.
+
+A single free machine cannot run a Kubernetes cluster, KServe, an MLflow server
+and the monitoring stack, so the hosted demo is deliberately smaller than the
+cluster deployment, and says so on screen:
+
+- **Same code, same model.** It is the platform image plus an ordinary SQLite
+  MLflow registry rebuilt at build time from `deploy/hosted/bundle`: the
+  production model and the 22 runs the real store recorded, with their original
+  tags, metrics and timestamps. The promotion history, drift check and rejected
+  retrain on the dashboard are real records, not a demo fixture.
+- **The model is served in-process** rather than by KServe, so the dashboard
+  reports `served by: in-process`.
+- **There is no Prometheus**, so traffic metrics show *Not available* and the
+  platform reports itself *degraded*, which is exactly what it is designed to say
+  when its metrics backend is missing.
+- **Free-tier sleep.** It stops after 15 idle minutes; the next visit wakes it.
+
+Try it:
+
+```bash
+curl -s https://sba-mlops-platform.onrender.com/ready
+curl -s https://sba-mlops-platform.onrender.com/predict -H 'content-type: application/json' -d '{
+  "applications": [{
+    "term_months": 84, "employees": 12, "jobs_created": 3, "jobs_retained": 8,
+    "gross_approved": 250000, "sba_approved": 187500, "disbursed": 250000,
+    "state": "CA", "bank_state": "CA", "revolving_line_of_credit": "N",
+    "low_doc": "N", "urban_rural": 1, "new_business": 1, "naics": "722410",
+    "franchise_code": 0, "approval_date": "2005-06-15",
+    "disbursement_date": "2005-07-20"
+  }]
+}'
+```
+
+Interactive API docs are at [/docs](https://sba-mlops-platform.onrender.com/docs).
 
 ## Design decisions worth knowing
 

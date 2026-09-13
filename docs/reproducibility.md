@@ -98,9 +98,9 @@ guaranteed by the API and a different BLAS on another platform may not share it.
 There is none within a platform. The known limits are:
 
 1. **Cross-platform floating point.** A different BLAS build may sum in a
-   different order. This is why the `portable` profile exists. It has not been
-   measured, because only one platform was available; the profile is a documented
-   bound, not a verified one.
+   different order. This is why the `portable` profile exists. Measured once, in CI
+   on Ubuntu 24.04: all 48 metrics matched the Windows reference bit-exactly, so
+   the bound was not needed there. Other BLAS builds remain unmeasured.
 2. **`PYTHONHASHSEED` is set inside the process.** CPython reads it at startup, so
    setting it during a run cannot affect the current interpreter's hashing. No
    part of the pipeline depends on set or dict iteration order today, so this is

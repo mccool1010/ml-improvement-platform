@@ -730,25 +730,37 @@ def drift(request: Request) -> DriftState:
     )
 
     event_id = tags.get("drift_event_id")
-    if event_id:
-        caused = [
-            r
-            for r in reader.runs(run_type="retraining_candidate", limit=20)
-            if r.data.tags.get("drift_event_id") == event_id
-        ]
-        if caused:
-            candidate = caused[0]
-            state.retraining = {
-                "ran": True,
-                "candidate_run_id": candidate.info.run_id,
-                "validation_average_precision": candidate.data.metrics.get(
-                    "validation_average_precision"
-                ),
-                "window_rows": candidate.data.tags.get("retrain_window_rows"),
-                "promoted": candidate.info.run_id in {v.run_id for v in reader.versions()},
-            }
-        else:
-            state.retraining = {"ran": False}
+    candidates = reader.runs(run_type="retraining_candidate", limit=20)
+    caused = [r for r in candidates if event_id and r.data.tags.get("drift_event_id") == event_id]
+    # A later check with no retrain of its own must not hide the most recent
+    # retraining decision. It is reported, and explicitly marked as belonging to
+    # the earlier check that triggered it.
+    candidate = caused[0] if caused else (candidates[0] if candidates else None)
+    if candidate is None:
+        state.retraining = {"ran": False}
+        return state
+
+    production_ap = None
+    try:
+        client = reader.client()
+        if client is not None:
+            version = client.get_model_version_by_alias(
+                config.registered_model_name, config.production_alias
+            )
+            production_ap = _as_float((version.tags or {}).get("validation_average_precision"))
+    except Exception:
+        production_ap = None
+
+    state.retraining = {
+        "ran": True,
+        "linked_to_latest_check": bool(caused),
+        "triggered_by": candidate.data.tags.get("drift_event_id"),
+        "candidate_run_id": candidate.info.run_id,
+        "validation_average_precision": candidate.data.metrics.get("validation_average_precision"),
+        "production_validation_average_precision": production_ap,
+        "window_rows": candidate.data.tags.get("retrain_window_rows"),
+        "promoted": candidate.info.run_id in {v.run_id for v in reader.versions()},
+    }
     return state
 
 

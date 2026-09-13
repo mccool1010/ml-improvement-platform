@@ -140,13 +140,26 @@ export function Drift() {
               );
             }
             return (
+              <>
+              {retraining.linked_to_latest_check === false ? (
+                <p className="muted" style={{ marginTop: 0 }}>
+                  The latest check has no retraining run of its own. Shown below is the most
+                  recent one, triggered by{" "}
+                  <span className="mono">{String(retraining.triggered_by ?? "an earlier check")}</span>.
+                </p>
+              ) : null}
               <KeyValue
                 rows={[
                   ["Ran", "yes"],
+                  ["Triggered by", String(retraining.triggered_by ?? "—")],
                   ["Candidate run", String(retraining.candidate_run_id ?? "—")],
                   [
                     "Candidate validation AP",
                     metric(retraining.validation_average_precision as number | null, 4),
+                  ],
+                  [
+                    "Production validation AP",
+                    metric(retraining.production_validation_average_precision as number | null, 4),
                   ],
                   ["Retraining window rows", String(retraining.window_rows ?? "—")],
                   [
@@ -157,6 +170,13 @@ export function Drift() {
                   ],
                 ]}
               />
+              {retraining.promoted === false ? (
+                <p className="muted" style={{ marginBottom: 0 }}>
+                  Not promoted. Drift was the reason this candidate was trained; the quality gates
+                  decide whether it replaces production, and they did not let it.
+                </p>
+              ) : null}
+              </>
             );
           }}
         </SectionBody>

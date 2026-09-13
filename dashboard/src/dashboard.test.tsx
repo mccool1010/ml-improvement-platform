@@ -201,6 +201,26 @@ describe("an unavailable dependency is reported, never filled in", () => {
     expect(screen.queryByRole("link", { name: "Grafana" })).not.toBeInTheDocument();
   });
 
+  it("labels a retraining decision that belongs to an earlier check", async () => {
+    stubFetch({
+      "/platform/drift": {
+        ...fixtures.drift,
+        retraining: {
+          ran: true,
+          linked_to_latest_check: false,
+          triggered_by: "drift-old",
+          promoted: false,
+          validation_average_precision: 0.7344,
+          production_validation_average_precision: 0.732,
+        },
+      },
+    });
+    render(<Drift />);
+    expect(await screen.findByText(/has no retraining run of its own/)).toBeInTheDocument();
+    expect(screen.getAllByText("drift-old").length).toBeGreaterThan(0);
+    expect(screen.getByText(/quality gates\s+decide whether it replaces production/)).toBeInTheDocument();
+  });
+
   it("reports no retraining run rather than implying one happened", async () => {
     stubFetch({ "/platform/drift": { ...fixtures.drift, retraining: { ran: false } } });
     render(<Drift />);
