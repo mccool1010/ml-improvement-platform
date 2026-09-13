@@ -117,6 +117,10 @@ INVARIANT_FALSIFIED_BY: dict[str, str] = {
     ),
 }
 
+#: Version tag carrying the original registration time when a registry is
+#: rebuilt elsewhere, e.g. by deploy/hosted/build_store.py.
+ORIGINALLY_REGISTERED_TAG = "originally_registered_at"
+
 #: Validation metrics worth showing for a production model, in display order.
 #: Names match the run records exactly; nothing is renamed for presentation.
 HEADLINE_METRICS: tuple[str, ...] = (
@@ -649,7 +653,11 @@ def promotions(request: Request) -> PromotionHistory:
                 gates_passed=_as_int(tags.get("gates_passed")),
                 gates_total=_as_int(tags.get("gates_total")),
                 metrics=_metrics_from_tags(tags, tags.get("decision_split") or "validation"),
-                created_at=_iso_millis(getattr(version, "creation_timestamp", None)),
+                # A registry rebuilt from another store (the hosted demo) records
+                # when the version was originally registered; its own creation
+                # time would only say when the rebuild ran.
+                created_at=tags.get(ORIGINALLY_REGISTERED_TAG)
+                or _iso_millis(getattr(version, "creation_timestamp", None)),
             )
         )
 

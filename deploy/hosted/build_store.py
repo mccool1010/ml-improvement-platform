@@ -60,13 +60,19 @@ def main(bundle: Path, store: Path, artifacts: Path) -> None:
         info = mlflow.sklearn.log_model(pipeline, name="model", serialization_format="cloudpickle")
 
     name = manifest["registered_model_name"]
+    tags = dict(manifest["production_version"]["tags"])
+    created_ms = manifest["production_version"].get("creation_timestamp")
+    if created_ms:
+        from datetime import UTC, datetime
+
+        # The rebuilt version's own creation time would be the build time; keep
+        # when the model was actually registered.
+        tags["originally_registered_at"] = datetime.fromtimestamp(
+            created_ms / 1000, tz=UTC
+        ).isoformat()
+
     client.create_registered_model(name)
-    version = client.create_model_version(
-        name,
-        source=info.model_uri,
-        run_id=run_id,
-        tags=manifest["production_version"]["tags"],
-    )
+    version = client.create_model_version(name, source=info.model_uri, run_id=run_id, tags=tags)
     client.set_registered_model_alias(name, manifest["production_alias"], version.version)
     print(f"store: {len(new_ids)} runs, {name} v{version.version} @ {manifest['production_alias']}")
 

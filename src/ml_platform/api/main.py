@@ -104,7 +104,8 @@ def _mount_dashboard(app: FastAPI) -> None:
 
     # A visitor opening the bare address should land on something readable. Only
     # registered when the dashboard exists, so `/` stays unrouted otherwise.
-    @app.get("/", include_in_schema=False)
+    # HEAD too: hosting platforms probe the bare address with it.
+    @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
     def _root() -> RedirectResponse:
         return RedirectResponse(url="/dashboard/")
 

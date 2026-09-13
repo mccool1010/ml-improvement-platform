@@ -103,10 +103,10 @@ export function Observability() {
       {health.data && health.data.status === "degraded" ? (
         <Caveat>
           <strong>The platform is reporting degraded.</strong> That is the expected reading when
-          Prometheus or MLflow is unreachable from the API — most often because the dashboard is
-          being run against a laptop process rather than the cluster. Predictions are unaffected
-          by design; the components that are down are the ones deliberately kept off the request
-          path.
+          Prometheus or MLflow is unreachable from the API: on the hosted demo, which runs as a
+          single container with no monitoring stack, or on a laptop process outside the cluster.
+          Predictions are unaffected by design; the components that are down are the ones
+          deliberately kept off the request path.
         </Caveat>
       ) : null}
     </>

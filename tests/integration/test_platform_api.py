@@ -487,3 +487,26 @@ class TestTheLatestRetrainingDecisionIsNotHidden:
         assert retraining["linked_to_latest_check"] is False
         assert retraining["triggered_by"] == "drift-old"
         assert retraining["promoted"] is False
+
+
+class TestTheOriginalRegistrationDateIsKept:
+    def test_a_rebuilt_registry_reports_when_the_version_was_really_registered(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from types import SimpleNamespace
+
+        from ml_platform.api import platform
+
+        version = SimpleNamespace(
+            version="1",
+            run_id="r1",
+            tags={platform.ORIGINALLY_REGISTERED_TAG: "2026-09-11T15:59:50+00:00"},
+            aliases=["production"],
+            creation_timestamp=1_789_000_000_000,
+        )
+        monkeypatch.setattr(platform._Mlflow, "versions", lambda _self: [version])
+        monkeypatch.setattr(platform._Mlflow, "training_runs", lambda _self, _limit=200: [])
+
+        with TestClient(create_app(load_on_startup=False)) as client:
+            row = client.get("/platform/promotions").json()["versions"][0]
+        assert row["created_at"] == "2026-09-11T15:59:50+00:00"

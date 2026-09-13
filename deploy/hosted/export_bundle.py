@@ -71,6 +71,7 @@ def main() -> None:
         "production_alias": config.production_alias,
         "production_version": {
             "source_run_id": version.run_id,
+            "creation_timestamp": version.creation_timestamp,
             "tags": dict(version.tags or {}),
         },
         "runs": runs,

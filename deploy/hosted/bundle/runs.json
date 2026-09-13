@@ -25,7 +25,8 @@
    "validation_brier_score": "0.022446",
    "validation_recall_at_capacity": "0.868513",
    "validation_threshold_at_capacity": "0.065487"
-  }
+  },
+  "creation_timestamp": 1788717210051
  },
  "runs": [
   {

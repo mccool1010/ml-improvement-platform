@@ -108,6 +108,10 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 COPY --chown=appuser:appuser deploy/hosted/bundle/ /app/bundle/
 COPY --chown=appuser:appuser deploy/hosted/build_store.py /app/build_store.py
 
+# MLflow tries to record git metadata and warns at length that there is no git
+# in the image. There is deliberately none; the bundle carries the git revisions.
+ENV GIT_PYTHON_REFRESH=quiet
+
 RUN python /app/build_store.py /app/bundle /app/mlflow.db /app/mlartifacts     && rm -rf /app/bundle /app/build_store.py
 
 # Some hosts ignore USER and run the container under their own uid (Hugging Face
