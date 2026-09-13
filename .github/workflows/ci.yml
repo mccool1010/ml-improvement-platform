@@ -1,8 +1,8 @@
 # Continuous integration.
 #
-# Four independent jobs, so a failure names itself: static checks, the test
-# suite, a real reproduction of the locked reference metrics, and the M8 image
-# build. Nothing here deploys anything and nothing here needs a secret.
+# Five independent jobs, so a failure names itself: static checks, the test
+# suite, the dashboard's tests and build, a real reproduction of the locked
+# reference metrics, and the image build. Nothing here deploys anything and nothing here needs a secret.
 #
 # Every command has a documented local equivalent in docs/ci.md. If a check can
 # only be run by pushing, it is not a check the project can act on.
@@ -88,6 +88,35 @@ jobs:
       # data; running them here as well would download it twice.
       - name: pytest
         run: uv run pytest
+
+  dashboard:
+    name: Dashboard tests and build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      # npm ci installs exactly the committed lockfile, the uv --frozen of npm.
+      - name: Install dependencies from the lockfile
+        run: npm ci
+
+      - name: Type-check
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
 
   reproducibility:
     name: Reproduce the locked reference
