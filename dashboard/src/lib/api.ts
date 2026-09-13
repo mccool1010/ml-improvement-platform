@@ -160,7 +160,7 @@ export interface LifecycleStage {
   stage: string;
   component: string;
   milestone: string;
-  state: "observed" | "implemented" | null;
+  state: "observed" | "implemented" | "untracked" | null;
 }
 
 export class ApiError extends Error {}

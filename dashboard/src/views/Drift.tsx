@@ -38,6 +38,7 @@ export function Drift() {
           state={drift}
           rows={5}
           command="python -m ml_platform drift"
+          hint="These commands record to the MLflow store they are pointed at. To see the result on a cluster dashboard, set MLFLOW_TRACKING_URI to the cluster's MLflow (port-forward it to localhost:5000) before running them."
           unavailable={(data) => (data.available ? null : { detail: data.detail })}
         >
           {(data) => (

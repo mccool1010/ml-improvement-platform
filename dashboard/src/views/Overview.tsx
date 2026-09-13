@@ -134,7 +134,7 @@ export function Overview() {
 
       <Panel
         title="Improvement lifecycle"
-        note="A stage is filled when this installation has state for it; hollow means the code exists and has not been exercised here."
+        note="Filled: this installation's MLflow has runs for the stage. Hollow: the code exists but this store has no runs for it. Dotted: evidence is not written to MLflow (failure reports stay where the harness ran), so this view cannot tell."
       >
         <SectionBody state={lifecycle} rows={3}>
           {(stages) => (
@@ -142,7 +142,7 @@ export function Overview() {
               {stages.map((stage) => (
                 <div className={`stage ${stage.state ?? "implemented"}`} key={stage.stage}>
                   <div className="name">
-                    {stage.state === "observed" ? "● " : "○ "}
+                    {stage.state === "observed" ? "● " : stage.state === "untracked" ? "◌ " : "○ "}
                     {stage.stage}
                   </div>
                   <div className="meta">{stage.milestone}</div>

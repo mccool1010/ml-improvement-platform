@@ -371,6 +371,19 @@ class _Mlflow:
             self.error = f"MLflow query failed: {type(exc).__name__}"
             return []
 
+    def has_experiment_runs(self, experiment_name: str) -> bool:
+        """Whether a named experiment holds at least one run."""
+        client = self.client()
+        if client is None:
+            return False
+        try:
+            experiment = client.get_experiment_by_name(experiment_name)
+            if experiment is None:
+                return False
+            return bool(client.search_runs([experiment.experiment_id], max_results=1))
+        except Exception:
+            return False
+
     def training_runs(self, limit: int = 200) -> list[Any]:
         """Runs that produced a model, however they were produced.
 
@@ -573,6 +586,7 @@ def lifecycle(request: Request) -> list[LifecycleStage]:
     have_drift = bool(reader.runs(run_type="drift_check", limit=1))
     have_canary = bool(reader.runs(run_type="canary_decision", limit=1))
     have_retrain = bool(reader.runs(run_type="retraining_candidate", limit=1))
+    have_optimize = reader.has_experiment_runs(config.optimization_experiment_name)
     service = getattr(request.app.state, "model_service", None)
     serving = bool(service and service.loaded)
 
@@ -587,16 +601,26 @@ def lifecycle(request: Request) -> list[LifecycleStage]:
         "monitor": config.prometheus_url is not None,
         "drift": have_drift,
         "retrain": have_retrain,
+        "optimize": have_optimize,
         "canary": have_canary,
         "rollback": have_canary,
     }
     return [
-        LifecycleStage(
-            **stage,
-            state="observed" if observed.get(stage["stage"], False) else "implemented",
-        )
+        LifecycleStage(**stage, state=_stage_state(stage["stage"], observed))
         for stage in LIFECYCLE_STAGES
     ]
+
+
+#: Stages whose evidence this process cannot see. Failure-scenario reports are
+#: written where the harness runs, not to MLflow, so "implemented" would wrongly
+#: imply the scenarios were never exercised.
+UNTRACKED_STAGES = frozenset({"failure / recovery"})
+
+
+def _stage_state(stage: str, observed: dict[str, bool]) -> str:
+    if stage in UNTRACKED_STAGES:
+        return "untracked"
+    return "observed" if observed.get(stage, False) else "implemented"
 
 
 @router.get("/promotions", response_model=PromotionHistory)
@@ -640,6 +664,11 @@ def promotions(request: Request) -> PromotionHistory:
             production_version = str(resolved.version)
             for summary in summaries:
                 summary.is_production = summary.version == production_version
+                # Some backends leave `aliases` empty on searched versions; the
+                # alias was just resolved, so show it rather than a dash beside
+                # the row marked production.
+                if summary.is_production and config.production_alias not in summary.aliases:
+                    summary.aliases.append(config.production_alias)
         except Exception:
             production_version = None
 
@@ -663,7 +692,7 @@ def drift(request: Request) -> DriftState:
     if not checks:
         return DriftState(
             available=False,
-            detail=reader.error or "no drift check has been run; use `python -m ml_platform drift`",
+            detail=reader.error or "no drift check is recorded in this MLflow store",
         )
 
     run = checks[0]

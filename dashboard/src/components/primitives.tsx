@@ -79,6 +79,7 @@ export function SectionBody<T>(props: {
   /** Read a per-section availability flag off the payload, if it has one. */
   unavailable?: (data: T) => { detail: string | null } | null;
   command?: string;
+  hint?: string;
   rows?: number;
   children: (data: T) => ReactNode;
 }) {
@@ -89,7 +90,9 @@ export function SectionBody<T>(props: {
   }
   if (data === null) return <Unavailable reason="the platform API returned nothing" />;
   const missing = props.unavailable?.(data);
-  if (missing) return <Unavailable reason={missing.detail} command={props.command} />;
+  if (missing) {
+    return <Unavailable reason={missing.detail} command={props.command} hint={props.hint} />;
+  }
   return <>{props.children(data)}</>;
 }
 

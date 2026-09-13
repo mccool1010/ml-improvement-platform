@@ -66,7 +66,8 @@ export function Canary() {
         <SectionBody
           state={canary}
           rows={3}
-          command="python -m ml_platform canary evaluate"
+          command="python -m ml_platform canary --action evaluate"
+          hint="These commands record to the MLflow store they are pointed at. To see the result on a cluster dashboard, set MLFLOW_TRACKING_URI to the cluster's MLflow (port-forward it to localhost:5000) before running them."
           unavailable={(data) =>
             data.available && data.last_decision === null
               ? { detail: data.detail ?? "no canary decision has been recorded yet" }
@@ -140,9 +141,8 @@ export function Canary() {
         <strong>Accuracy is not a rollback signal.</strong>{" "}
         {canary.data?.signal_note ??
           "Rollback uses operational signals only: error rate, latency, upstream failures and serving health."}{" "}
-        A canary that waited for accuracy would wait five years, so the decision is made on
-        signals that are available in minutes — and a canary is never promoted on them either.
-        Promotion still goes through the quality gates.
+        Nor is a canary ever promoted on these signals: promotion still goes through the quality
+        gates.
       </Caveat>
     </>
   );

@@ -222,6 +222,7 @@ tr.is-production td { background: rgba(63, 191, 127, 0.06); }
 .stage .name { font-size: 12px; }
 .stage .meta { font-family: var(--mono); font-size: 10.5px; color: var(--faint); margin-top: 3px; }
 .stage.observed { border-color: rgba(63, 191, 127, 0.4); }
+.stage.untracked { border-style: dashed; }
 
 /* --- events --- */
 

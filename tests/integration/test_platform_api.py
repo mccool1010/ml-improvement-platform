@@ -233,7 +233,7 @@ class TestTheLifecycleMatchesTheCode:
         assert len(stages) >= 13
         for stage in stages:
             assert stage["stage"] and stage["component"] and stage["milestone"]
-            assert stage["state"] in {"observed", "implemented"}
+            assert stage["state"] in {"observed", "implemented", "untracked"}
 
     def test_the_order_is_the_lifecycle_order(self, offline_client: Any) -> None:
         names = [s["stage"] for s in offline_client.get("/platform/lifecycle").json()]
@@ -254,6 +254,51 @@ class TestTheLifecycleMatchesTheCode:
         stages = {s["stage"]: s["state"] for s in offline_client.get("/platform/lifecycle").json()}
         assert stages["drift"] == "implemented"
         assert stages["canary"] == "implemented"
+        assert stages["optimize"] == "implemented"
+
+    def test_failure_recovery_is_untracked_rather_than_unexercised(self, local_client: Any) -> None:
+        """Failure reports are not written to MLflow, so this view cannot know
+        whether the scenarios ran. "implemented" would claim they never did."""
+        stages = {s["stage"]: s["state"] for s in local_client.get("/platform/lifecycle").json()}
+        assert stages["failure / recovery"] == "untracked"
+
+    def test_optimize_is_observed_when_its_experiment_has_runs(
+        self, monkeypatch: pytest.MonkeyPatch, local_client: Any
+    ) -> None:
+        """Optimisation runs live in their own experiment; the stage must look
+        there rather than stay permanently hollow."""
+        from ml_platform.api import platform
+
+        monkeypatch.setattr(platform._Mlflow, "has_experiment_runs", lambda _self, _name: True)
+        stages = {s["stage"]: s["state"] for s in local_client.get("/platform/lifecycle").json()}
+        assert stages["optimize"] == "observed"
+
+
+class TestTheProductionAliasIsShown:
+    def test_the_production_row_lists_its_alias(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Some backends return searched versions with empty `aliases`. The row
+        marked production must still show the alias, not a dash."""
+        from types import SimpleNamespace
+
+        from ml_platform.api import platform
+
+        version = SimpleNamespace(
+            version="1", run_id="r1", tags={}, aliases=[], creation_timestamp=0
+        )
+
+        class FakeClient:
+            def get_model_version_by_alias(self, _name: str, _alias: str) -> Any:
+                return version
+
+        monkeypatch.setattr(platform._Mlflow, "versions", lambda _self: [version])
+        monkeypatch.setattr(platform._Mlflow, "client", lambda _self: FakeClient())
+        monkeypatch.setattr(platform._Mlflow, "training_runs", lambda _self, _limit=200: [])
+
+        with TestClient(create_app(load_on_startup=False)) as client:
+            payload = client.get("/platform/promotions").json()
+        row = payload["versions"][0]
+        assert row["is_production"] is True
+        assert "production" in row["aliases"]
 
 
 class TestTheClaimsTheProjectMustNotBlur:

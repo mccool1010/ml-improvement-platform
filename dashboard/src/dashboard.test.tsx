@@ -313,6 +313,32 @@ describe("the distinctions the project must not blur", () => {
     expect(within(live).getByText("live-kubernetes")).toBeInTheDocument();
   });
 
+  it("offers the canary command the CLI actually accepts", async () => {
+    stubFetch({ "/platform/canary": { ...fixtures.canary, last_decision: null } });
+    render(<Canary />);
+    expect(
+      await screen.findByText("python -m ml_platform canary --action evaluate"),
+    ).toBeInTheDocument();
+    // And warns that the result lands in whichever store the command points at.
+    expect(screen.getByText(/MLFLOW_TRACKING_URI/)).toBeInTheDocument();
+  });
+
+  it("renders an untracked stage distinctly from an unexercised one", async () => {
+    stubFetch({
+      "/platform/lifecycle": [
+        ...fixtures.lifecycle,
+        { stage: "failure / recovery", component: "ml_platform.failure", milestone: "M15", state: "untracked" },
+      ],
+    });
+    const { container } = render(<Overview />);
+    await screen.findByText("M15");
+    const tile = Array.from(container.querySelectorAll(".stage")).find((node) =>
+      node.textContent?.includes("failure / recovery"),
+    );
+    expect(tile).toHaveClass("untracked");
+    expect(tile).not.toHaveClass("implemented");
+  });
+
   it("shows the unregistered-candidate denominator", async () => {
     stubFetch();
     render(<Models />);
